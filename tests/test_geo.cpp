@@ -2,7 +2,7 @@
 #include "guikit/geo.hpp"
 #include "keel/http.h"
 #if defined(GUIKIT_HAS_BACKEND_THORVG) && GUIKIT_HAS_BACKEND_THORVG
-#include "guikit/backend/thor_canvas.hpp"
+#include "guikit/sdl.hpp"
 #endif
 #include "keel/keel.h"
 #include "keel/math.h"
