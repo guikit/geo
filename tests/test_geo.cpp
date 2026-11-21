@@ -1,9 +1,17 @@
 #include "guikit/guikit.hpp"
 #include "guikit/geo.hpp"
 #include "keel/http.h"
+#if defined(GUIKIT_HAS_BACKEND_THORVG) && GUIKIT_HAS_BACKEND_THORVG
 #include "guikit/backend/thor_canvas.hpp"
+#endif
 #include "keel/keel.h"
 #include "keel/math.h"
+
+#if defined(GUIKIT_HAS_BACKEND_THORVG) && GUIKIT_HAS_BACKEND_THORVG
+using TestCanvas = guikit::ThorCanvas;
+#else
+using TestCanvas = guikit::NullCanvas;
+#endif
 
 static keel::i32 g_failures = 0;
 
@@ -94,7 +102,7 @@ void TestMapViewWidgetWorkflow() {
     using namespace guikit;
 
     Context ui;
-    ThorCanvas canvas;
+    TestCanvas canvas;
 
     const keel::u32 width = 960;
     const keel::u32 height = 540;
@@ -247,7 +255,7 @@ void TestGisDemoBayGeoJsonAndRenderEngine() {
     CHECK(res.totalBounds.IsValid());
 
     Context ui;
-    ThorCanvas canvas;
+    TestCanvas canvas;
     const keel::u32 width = 800;
     const keel::u32 height = 600;
     keel::Array<keel::u32> pixels(width * height);
@@ -284,7 +292,7 @@ void TestGisDemoBayGeoJsonAndRenderEngine() {
 
 void TestPanelSashAndBodyOcclusionOverMapViewAndScene() {
     Context ui;
-    ThorCanvas canvas;
+    TestCanvas canvas;
     keel::Array<keel::u32> pixels(800 * 600);
     canvas.SetTarget(pixels.data(), 800, 600, 800);
 
@@ -570,7 +578,7 @@ void TestGisTileCacheAndTileSourceLambda() {
             lyr.FinalizeLayer(9000u + li);
         }
 
-        ThorCanvas canvas;
+        TestCanvas canvas;
         keel::Array<keel::u32> fb(640u * 480u, 0u);
         canvas.SetTarget(fb.data(), 640, 480, 640);
 
@@ -631,7 +639,7 @@ void TestGisTileCacheAndTileSourceLambda() {
     }
     // MapViewOptions::tileSource FunctionRef lambda
     {
-        ThorCanvas canvas;
+        TestCanvas canvas;
         keel::Array<keel::u32> fb(800u * 600u, 0u);
         canvas.SetTarget(fb.data(), 800, 600, 800);
         Context ui;
@@ -685,14 +693,26 @@ void TestGisTileCacheAndTileSourceLambda() {
             0x44, 0xAE, 0x42, 0x60, 0x82
         };
         keel::Array<keel::u32> rgba;
+#if defined(GUIKIT_HAS_BACKEND_THORVG) && GUIKIT_HAS_BACKEND_THORVG
         CHECK(guikit::geo::DecodePngAndScaleToRgba(kSample1x1Png, 256, rgba));
         CHECK(rgba.size() == 256u * 256u);
+#else
+        // Without a registered image decoder backend, DecodePngAndScaleToRgba gracefully returns false.
+        CHECK(!guikit::geo::DecodePngAndScaleToRgba(kSample1x1Png, 256, rgba));
+#endif
     }
     keel::println("  [PASS] TestGisTileCacheAndTileSourceLambda completed");
 }
 
 int main() {
     keel::println("[RUN] Testing GuiKit Geo module...");
+#if !defined(GUIKIT_HAS_BACKEND_THORVG) || !GUIKIT_HAS_BACKEND_THORVG
+    if (!guikit::HasDefaultVectorCanvasFactory()) {
+        guikit::RegisterDefaultVectorCanvasFactory([](bool) -> keel::UniquePtr<guikit::ICanvas> {
+            return keel::make_unique<guikit::NullCanvas>();
+        });
+    }
+#endif
     TestMapGridAndProjections();
     TestMapViewWidgetWorkflow();
     TestGisDemoBayGeoJsonAndRenderEngine();

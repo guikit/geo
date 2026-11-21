@@ -2885,23 +2885,25 @@ public:
         tile.lastRasterizedFrame = frameTick;
         tile.hasAnyGeometry = false;
 
-        RasterizeCandidatesToPixels(
-            *m_tileCanvas,
-            m_fillPath,
-            m_strokePath,
-            m_clippedRing,
-            m_scratchA,
-            m_scratchB,
-            m_syncAsyncCandidates,
-            cell,
-            crs,
-            m_tileSizePx,
-            queryBox,
-            cfg.lodSimplification,
-            cfg.lodPixelTolerance,
-            tile.pixels,
-            tile.hasAnyGeometry
-        );
+        if (m_tileCanvas) {
+            RasterizeCandidatesToPixels(
+                *m_tileCanvas,
+                m_fillPath,
+                m_strokePath,
+                m_clippedRing,
+                m_scratchA,
+                m_scratchB,
+                m_syncAsyncCandidates,
+                cell,
+                crs,
+                m_tileSizePx,
+                queryBox,
+                cfg.lodSimplification,
+                cfg.lodPixelTolerance,
+                tile.pixels,
+                tile.hasAnyGeometry
+            );
+        }
 
         if (tile.hasAnyGeometry && !tile.pixels.empty()) {
             if (tile.pixels.capacity() > 0u) {
