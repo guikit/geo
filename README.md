@@ -21,7 +21,9 @@ guikit::geo::MapViewOptions opts;
 opts.projection = guikit::geo::MapProjection::WebMercator;
 opts.height = guikit::SizeMode::Stretch;
 
-guikit::geo::MapView(ui, mapState, opts);
+if (auto map = guikit::geo::MapView(ui, opts)) {
+    // Draw custom geo-referenced overlays here
+}
 ```
 
 ## CMake Integration
