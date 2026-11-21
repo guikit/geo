@@ -1,0 +1,3 @@
+[submodule "third_party/http"]
+	path = third_party/http
+	url = https://github.com/keelcpp/http.git
