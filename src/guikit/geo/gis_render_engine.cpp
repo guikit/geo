@@ -2451,6 +2451,13 @@ public:
         return m_basemapTiles.contains(key);
     }
 
+    [[nodiscard]] const geo::RasterTileImage* FindBasemapTile(const TileCoordKey& key) const noexcept {
+        if (const auto* ptr = m_basemapTiles.get(key); ptr && *ptr && (*ptr)->IsValid()) {
+            return ptr->get();
+        }
+        return nullptr;
+    }
+
     [[nodiscard]] keel::u64 GetBasemapGeneration() const noexcept {
         return m_basemapGeneration;
     }
@@ -4765,7 +4772,9 @@ GisRenderStats GisRenderEngine::RenderLayers(
 
     double rasterMs = 0.0;
     const keel::usize numVisTiles = viewState.visibleTiles.size();
-    if (cfg.useVectorTileCache && !viewState.visibleTiles.empty()) {
+    const bool useCpuVectorTileCache = cfg.useVectorTileCache && !viewState.visibleTiles.empty() &&
+                                       guikit::HasDefaultVectorCanvasFactory();
+    if (useCpuVectorTileCache) {
         const keel::u64 rasterPassStartUs = keel::monotonic_us();
         PerLayerTileCacheManager& cache = GetTileCache();
         cache.SyncConfig(cfg, viewState.crs, basemapSourceId);
@@ -5160,7 +5169,50 @@ GisRenderStats GisRenderEngine::RenderLayers(
         }
         rasterMs = static_cast<double>(keel::monotonic_us() - rasterPassStartUs) * 0.001;
     } else {
-        // Direct immediate-mode vector pass (used when VectorTileCache is toggled off)
+        // Direct immediate-mode vector pass (GPU-native path when no offscreen CPU vector canvas
+        // is registered, or when VectorTileCache is explicitly toggled off).
+        if (useBasemapOverlay && !viewState.visibleTiles.empty()) {
+            PerLayerTileCacheManager& cache = GetTileCache();
+            cache.SyncConfig(cfg, viewState.crs, basemapSourceId);
+            const keel::u32 tileSizePx = cache.GetTileSizePx();
+
+            keel::Array<AsyncBasemapResult> completedBasemapTiles;
+            GetAsyncStreamer().DrainCompletedBasemapTiles(completedBasemapTiles);
+            for (AsyncBasemapResult& bm : completedBasemapTiles) {
+                if (cache.StoreBasemapTile(bm.sourceId.as_ref(), bm.tileKey, keel::move(bm.image))) {
+                    ++stats.cachedTilesRendered;
+                }
+            }
+
+            const guikit::Vec2 viewCenterW = map.GeoToWorld(viewState.center);
+            for (const guikit::OsmTileCell& cell : viewState.visibleTiles) {
+                const TileCoordKey key{cell.id.z, cell.id.x, cell.id.y};
+                if (!cache.HasBasemapTile(key)) {
+                    const geo::SlippyTileKey bmKey{cell.id.z, cell.id.x, cell.id.y, tileSizePx};
+                    auto cachedBm = activeBasemapProvider->TryGetCachedTile(bmKey);
+                    if (cachedBm && cachedBm->IsValid()) {
+                        if (cache.StoreBasemapTile(basemapSourceId, bmKey, keel::move(cachedBm))) {
+                            ++stats.cachedTilesRendered;
+                        }
+                    } else {
+                        const float dx = (cell.worldRect.x + cell.worldRect.w * 0.5f) - viewCenterW.x;
+                        const float dy = (cell.worldRect.y + cell.worldRect.h * 0.5f) - viewCenterW.y;
+                        GetAsyncStreamer().EnqueueBasemapTileJob(activeBasemapProvider, bmKey, dx * dx + dy * dy);
+                    }
+                }
+                if (const geo::RasterTileImage* bm = cache.FindBasemapTile(key)) {
+                    scene.DrawPixels(
+                        {bm->rgbaPixels, bm->width, bm->height},
+                        cell.worldRect,
+                        0.0f,
+                        basemapOpacityByte
+                    );
+                    ++stats.cachedTilesHit;
+                }
+            }
+            stats.cachedTilesPending += GetAsyncStreamer().GetPendingBasemapCount();
+        }
+
         struct OrderedDirectLayer {
             const geo::GeoLayer* layer{nullptr};
             keel::usize layerIdx{0};
@@ -5224,12 +5276,17 @@ GisRenderStats GisRenderEngine::RenderLayers(
                                 feat.RefreshResidentHeapBytes();
                             }
                             if (st.renderFill && !poly.triangles.empty()) {
+                                guikit::Color fillCol = st.fillColor;
+                                if (useBasemapOverlay && feat.chartClass == geo::ChartFeatureClass::DepthArea) {
+                                    const float mult = keel::clamp(cfg.bathymetryOverBasemapOpacity, 0.05f, 1.0f);
+                                    fillCol.a = keel::sat_cast<keel::u8>(keel::round_i32(static_cast<float>(fillCol.a) * mult));
+                                }
                                 for (const geo::GeoTriangle& tri : poly.triangles) {
                                     scene.DrawTriangle(
                                         map.GeoToWorld(tri.a),
                                         map.GeoToWorld(tri.b),
                                         map.GeoToWorld(tri.c),
-                                        st.fillColor
+                                        fillCol
                                     );
                                     ++stats.renderedTriangles;
                                 }
