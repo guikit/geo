@@ -943,7 +943,7 @@ void GeoLayer::FinalizeLayer(keel::u64 layerUid, bool forceTriangulateAll) {
         for (keel::usize c = 1; c < classCounts.size(); ++c) {
             if (classCounts[c] > bestCount) {
                 bestCount = classCounts[c];
-                bestClass = static_cast<ChartFeatureClass>(c);
+                bestClass = keel::from_underlying<ChartFeatureClass>(c);
             }
         }
         dominantChartClass = bestClass;
