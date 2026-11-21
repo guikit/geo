@@ -15,10 +15,10 @@ struct MapSeamarkOptions {
     keel::StringRef id{};                       ///< Unique identifier for selection & inspector (e.g. "WP-HELGOLAND")
     keel::StringRef title{};                    ///< Display label rendered next to the seamark
     keel::StringRef category{"IALA Seamark"};   ///< Category description shown in floating inspector
-    float radiusPx{7.0f};                       ///< Screen-space symbol radius in logical pixels (zoom-invariant)
+    keel::f32 radiusPx{7.0f};                       ///< Screen-space symbol radius in logical pixels (zoom-invariant)
     bool showLightSector{true};                 ///< Render outer IALA light sector arc
-    float sectorStartDeg{-65.0f};               ///< Light sector start angle in degrees
-    float sectorSweepDeg{130.0f};               ///< Light sector angular sweep in degrees
+    keel::f32 sectorStartDeg{-65.0f};               ///< Light sector start angle in degrees
+    keel::f32 sectorSweepDeg{130.0f};               ///< Light sector angular sweep in degrees
     keel::Optional<Color> color{keel::kNullOpt};///< Custom symbol color (defaults to chart magenta / cyan when selected)
     bool selectable{true};                      ///< Participate in click & marquee selection
 };
@@ -28,18 +28,18 @@ struct MapViewOptions {
     // --- Cartographic & Projection Parameters ---
     MapCrs crs{MapCrs::EPSG3857_WebMercator};
     GeoCoordFormat coordFormat{GeoCoordFormat::NauticalDMM};
-    float worldSize{2048.0f};                   ///< Internal world extent (0..worldSize in X and Y)
+    keel::f32 worldSize{2048.0f};                   ///< Internal world extent (0..worldSize in X and Y)
     keel::i32 baseZoom{3};                            ///< Tile zoom level corresponding to sceneZoom == 1.0f (2048 / 256 = 8 = 2^3)
     keel::i32 minTileZoom{1};
     keel::i32 maxTileZoom{18};
-    float zoomBias{0.0f};
+    keel::f32 zoomBias{0.0f};
     TileSourceCallback tileSource{};            ///< Optional callback resolving tile [z/x/y] to SVG/PNG/JPG path
 
     // --- Initial & Programmatic Camera Framing ---
     GeoCoord initialCenter{54.1825, 7.8853};    ///< Default initial center (Helgoland / German Bight)
-    float initialTileZoom{7.0f};                ///< Default initial tile zoom level
+    keel::f32 initialTileZoom{7.0f};                ///< Default initial tile zoom level
     keel::Optional<GeoCoord> requestCenterGeo{keel::kNullOpt}; ///< Programmatic jump to geographic coordinate
-    keel::Optional<float> requestTileZoom{keel::kNullOpt};     ///< Programmatic jump to tile zoom level
+    keel::Optional<keel::f32> requestTileZoom{keel::kNullOpt};     ///< Programmatic jump to tile zoom level
     bool requestResetView{false};               ///< Reset camera to initialCenter & initialTileZoom
 
     // --- Built-in Cartographic Layers & Overlays ---
@@ -52,10 +52,10 @@ struct MapViewOptions {
     // --- Layout & Viewport Controls ---
     AxisSize width{};
     AxisSize height{SizeMode::Stretch};
-    keel::Optional<float> minHeight{keel::kNullOpt}; ///< Minimum fallback height (nullopt = 220 dp)
-    float minZoom{0.25f};
-    float maxZoom{4096.0f};
-    float zoomStep{1.2f};
+    keel::Optional<keel::f32> minHeight{keel::kNullOpt}; ///< Minimum fallback height (nullopt = 220 dp)
+    keel::f32 minZoom{0.25f};
+    keel::f32 maxZoom{4096.0f};
+    keel::f32 zoomStep{1.2f};
     bool zoomable{true};
     bool pannable{true};
     bool selectableItems{true};
@@ -103,9 +103,9 @@ public:
     [[nodiscard]] GeoCoord GetCursorGeo() const noexcept { return m_view.cursor; }
     [[nodiscard]] GeoBounds GetVisibleGeoBounds() const noexcept { return m_view.visibleBounds; }
     [[nodiscard]] keel::i32 GetTileZoom() const noexcept { return m_view.tileZoom; }
-    [[nodiscard]] float GetContinuousZoom() const noexcept { return m_view.continuousZoom; }
-    [[nodiscard]] double GetMetersPerPixel() const noexcept { return m_view.metersPerPixel; }
-    [[nodiscard]] double GetGraticuleStepArcMin() const noexcept { return m_view.graticuleStepArcMin; }
+    [[nodiscard]] keel::f32 GetContinuousZoom() const noexcept { return m_view.continuousZoom; }
+    [[nodiscard]] keel::f64 GetMetersPerPixel() const noexcept { return m_view.metersPerPixel; }
+    [[nodiscard]] keel::f64 GetGraticuleStepArcMin() const noexcept { return m_view.graticuleStepArcMin; }
 
     // --- Geographic <-> World / Screen Projections ---
     [[nodiscard]] Vec2 GeoToWorld(GeoCoord coord) const noexcept;
@@ -114,14 +114,14 @@ public:
     [[nodiscard]] GeoCoord ScreenToGeo(Vec2 screenPt) const noexcept;
 
     // --- Imperative Camera Control ---
-    void CenterOnGeo(GeoCoord coord, keel::Optional<float> tileZoom = keel::kNullOpt) noexcept;
+    void CenterOnGeo(GeoCoord coord, keel::Optional<keel::f32> tileZoom = keel::kNullOpt) noexcept;
     void ResetView() noexcept;
 
     // --- Interactive Geographic Items & Drawing Primitives ---
     /// Declares an interactive, selectable item anchored at a geographic coordinate with a screen-space hit radius.
     [[nodiscard]] SceneItemScope GeoItem(
         GeoCoord coord,
-        float hitRadiusPx,
+        keel::f32 hitRadiusPx,
         const SceneItemOptions& opts
     );
 
@@ -130,34 +130,34 @@ public:
         GeoCoord from,
         GeoCoord to,
         Color color,
-        float strokeWidthPx = 1.8f
+        keel::f32 strokeWidthPx = 1.8f
     );
 
     /// Draws a connected multi-leg geographic polyline or closed polygon outline.
     void DrawGeoPolyline(
         keel::ArrayRef<GeoCoord> coords,
         Color color,
-        float strokeWidthPx = 1.8f,
+        keel::f32 strokeWidthPx = 1.8f,
         bool closed = false
     );
 
     /// Draws a zoom-invariant circle anchored at a geographic coordinate.
     void DrawGeoCircle(
         GeoCoord center,
-        float radiusPx,
+        keel::f32 radiusPx,
         Color fill,
         Color stroke = Color::Transparent(),
-        float strokeWidthPx = 0.0f
+        keel::f32 strokeWidthPx = 0.0f
     );
 
     /// Draws a zoom-invariant circular arc (e.g. lighthouse sector) anchored at a geographic coordinate.
     void DrawGeoArc(
         GeoCoord center,
-        float radiusPx,
-        float startAngleDeg,
-        float sweepAngleDeg,
+        keel::f32 radiusPx,
+        keel::f32 startAngleDeg,
+        keel::f32 sweepAngleDeg,
         Color stroke,
-        float strokeWidthPx = 1.8f,
+        keel::f32 strokeWidthPx = 1.8f,
         keel::i32 segments = 16
     );
 
@@ -166,7 +166,7 @@ public:
         keel::StringRef text,
         GeoCoord coord,
         Vec2 offsetPx = {0.0f, 0.0f},
-        float fontSize = 11.0f,
+        keel::f32 fontSize = 11.0f,
         Color color = Color(255, 255, 255, 255),
         FontStyle style = FontStyle::Regular
     );

@@ -115,8 +115,8 @@ GeoCoord MapViewScope::ScreenToGeo(Vec2 screenPt) const noexcept {
     return WorldToGeo(m_scene.ScreenToWorld(screenPt));
 }
 
-void MapViewScope::CenterOnGeo(GeoCoord coord, keel::Optional<float> tileZoom) noexcept {
-    keel::Optional<float> sceneZoom{keel::kNullOpt};
+void MapViewScope::CenterOnGeo(GeoCoord coord, keel::Optional<keel::f32> tileZoom) noexcept {
+    keel::Optional<keel::f32> sceneZoom{keel::kNullOpt};
     if (tileZoom.has_value()) {
         sceneZoom = MapGrid::TileZoomToSceneZoom(*tileZoom, m_opts.baseZoom);
     }
@@ -129,12 +129,12 @@ void MapViewScope::ResetView() noexcept {
 
 SceneItemScope MapViewScope::GeoItem(
     GeoCoord coord,
-    float hitRadiusPx,
+    keel::f32 hitRadiusPx,
     const SceneItemOptions& opts
 ) {
-    const float invZ = 1.0f / keel::max(0.0001f, m_scene.GetZoom());
+    const keel::f32 invZ = 1.0f / keel::max(0.0001f, m_scene.GetZoom());
     const Vec2 wPos = GeoToWorld(coord);
-    const float r = keel::max(2.0f, hitRadiusPx) * invZ;
+    const keel::f32 r = keel::max(2.0f, hitRadiusPx) * invZ;
     SceneItemOptions itemOpts = opts;
     if (!itemOpts.hitRect.has_value()) {
         itemOpts.hitRect = Rect(wPos.x - r, wPos.y - r, r * 2.0f, r * 2.0f);
@@ -146,21 +146,21 @@ void MapViewScope::DrawGeoLine(
     GeoCoord from,
     GeoCoord to,
     Color color,
-    float strokeWidthPx
+    keel::f32 strokeWidthPx
 ) {
-    const float invZ = 1.0f / keel::max(0.0001f, m_scene.GetZoom());
+    const keel::f32 invZ = 1.0f / keel::max(0.0001f, m_scene.GetZoom());
     m_scene.DrawLine(GeoToWorld(from), GeoToWorld(to), color, strokeWidthPx * invZ);
 }
 
 void MapViewScope::DrawGeoPolyline(
     keel::ArrayRef<GeoCoord> coords,
     Color color,
-    float strokeWidthPx,
+    keel::f32 strokeWidthPx,
     bool closed
 ) {
     if (coords.size() < 2) return;
-    const float invZ = 1.0f / keel::max(0.0001f, m_scene.GetZoom());
-    const float w = strokeWidthPx * invZ;
+    const keel::f32 invZ = 1.0f / keel::max(0.0001f, m_scene.GetZoom());
+    const keel::f32 w = strokeWidthPx * invZ;
     for (keel::usize i = 0; i + 1 < coords.size(); ++i) {
         m_scene.DrawLine(GeoToWorld(coords[i]), GeoToWorld(coords[i + 1]), color, w);
     }
@@ -171,25 +171,25 @@ void MapViewScope::DrawGeoPolyline(
 
 void MapViewScope::DrawGeoCircle(
     GeoCoord center,
-    float radiusPx,
+    keel::f32 radiusPx,
     Color fill,
     Color stroke,
-    float strokeWidthPx
+    keel::f32 strokeWidthPx
 ) {
-    const float invZ = 1.0f / keel::max(0.0001f, m_scene.GetZoom());
+    const keel::f32 invZ = 1.0f / keel::max(0.0001f, m_scene.GetZoom());
     m_scene.DrawCircle(GeoToWorld(center), radiusPx * invZ, fill, stroke, strokeWidthPx * invZ);
 }
 
 void MapViewScope::DrawGeoArc(
     GeoCoord center,
-    float radiusPx,
-    float startAngleDeg,
-    float sweepAngleDeg,
+    keel::f32 radiusPx,
+    keel::f32 startAngleDeg,
+    keel::f32 sweepAngleDeg,
     Color stroke,
-    float strokeWidthPx,
+    keel::f32 strokeWidthPx,
     keel::i32 segments
 ) {
-    const float invZ = 1.0f / keel::max(0.0001f, m_scene.GetZoom());
+    const keel::f32 invZ = 1.0f / keel::max(0.0001f, m_scene.GetZoom());
     m_scene.DrawArc(
         GeoToWorld(center),
         radiusPx * invZ,
@@ -205,11 +205,11 @@ void MapViewScope::DrawGeoText(
     keel::StringRef text,
     GeoCoord coord,
     Vec2 offsetPx,
-    float fontSize,
+    keel::f32 fontSize,
     Color color,
     FontStyle style
 ) {
-    const float invZ = 1.0f / keel::max(0.0001f, m_scene.GetZoom());
+    const keel::f32 invZ = 1.0f / keel::max(0.0001f, m_scene.GetZoom());
     const Vec2 wPos = GeoToWorld(coord);
     m_scene.DrawText(
         text,
@@ -225,9 +225,9 @@ SceneItemScope MapViewScope::DrawSeamark(
     GeoCoord coord,
     const MapSeamarkOptions& opts
 ) {
-    const float invZ = 1.0f / keel::max(0.0001f, m_scene.GetZoom());
+    const keel::f32 invZ = 1.0f / keel::max(0.0001f, m_scene.GetZoom());
     const Vec2 wPos = GeoToWorld(coord);
-    const float r = keel::max(2.0f, opts.radiusPx) * invZ;
+    const keel::f32 r = keel::max(2.0f, opts.radiusPx) * invZ;
     const Rect hitBox(wPos.x - r * 2.0f, wPos.y - r * 2.0f, r * 4.0f, r * 4.0f);
 
     SceneItemScope item = m_scene.Item({
@@ -281,8 +281,8 @@ SceneItemScope MapViewScope::DrawSeamark(
 }
 
 void MapViewScope::RenderForegroundOverlays() {
-    const float z = keel::max(0.0001f, m_scene.GetZoom());
-    const float invZ = 1.0f / z;
+    const keel::f32 z = keel::max(0.0001f, m_scene.GetZoom());
+    const keel::f32 invZ = 1.0f / z;
     const Rect visWorld = m_scene.GetVisibleWorldRect();
 
     const Color seamarkMagenta = m_lightMode ? Color::Rgba(185, 28, 140, 235) : Color::Rgba(232, 121, 249, 240);
@@ -294,39 +294,39 @@ void MapViewScope::RenderForegroundOverlays() {
         const Color gratMajorCol = m_lightMode ? Color::Rgba(13, 148, 136, 175)  : Color::Rgba(45, 212, 191, 175);
         const Color gratZeroCol  = m_lightMode ? Color::Rgba(220, 38, 38, 200)   : Color::Rgba(248, 113, 113, 205);
 
-        const float vy0 = keel::clamp(visWorld.y, 0.0f, m_opts.worldSize);
-        const float vy1 = keel::clamp(visWorld.Bottom(), 0.0f, m_opts.worldSize);
-        const float vx0 = keel::clamp(visWorld.x, 0.0f, m_opts.worldSize);
-        const float vx1 = keel::clamp(visWorld.Right(), 0.0f, m_opts.worldSize);
+        const keel::f32 vy0 = keel::clamp(visWorld.y, 0.0f, m_opts.worldSize);
+        const keel::f32 vy1 = keel::clamp(visWorld.Bottom(), 0.0f, m_opts.worldSize);
+        const keel::f32 vx0 = keel::clamp(visWorld.x, 0.0f, m_opts.worldSize);
+        const keel::f32 vx1 = keel::clamp(visWorld.Right(), 0.0f, m_opts.worldSize);
 
         if (MapGrid::IsCylindricalCrs(m_opts.crs)) {
             for (const GraticuleLine& m : m_view.meridians) {
                 const Color col = m.isZero ? gratZeroCol : (m.isMajor ? gratMajorCol : gratMinorCol);
-                const float w = (m.isZero ? 1.8f : (m.isMajor ? 1.25f : 0.85f)) * invZ;
+                const keel::f32 w = (m.isZero ? 1.8f : (m.isMajor ? 1.25f : 0.85f)) * invZ;
                 m_scene.DrawLine({m.worldPos, vy0}, {m.worldPos, vy1}, col, w);
             }
 
             for (const GraticuleLine& p : m_view.parallels) {
                 const Color col = p.isZero ? gratZeroCol : (p.isMajor ? gratMajorCol : gratMinorCol);
-                const float w = (p.isZero ? 1.8f : (p.isMajor ? 1.25f : 0.85f)) * invZ;
+                const keel::f32 w = (p.isZero ? 1.8f : (p.isMajor ? 1.25f : 0.85f)) * invZ;
                 m_scene.DrawLine({vx0, p.worldPos}, {vx1, p.worldPos}, col, w);
             }
         } else {
             // Curved / converging meridians & parallels for Transverse Mercator (UTM / GSK-2011 / SK-42) and Polar Stereographic
-            const double minLat = keel::clamp(m_view.visibleBounds.se.lat, -89.9, 89.9);
-            const double maxLat = keel::clamp(m_view.visibleBounds.nw.lat, -89.9, 89.9);
-            const double minLon = keel::clamp(m_view.visibleBounds.nw.lon, -180.0, 180.0);
-            const double maxLon = keel::clamp(m_view.visibleBounds.se.lon, -180.0, 180.0);
+            const keel::f64 minLat = keel::clamp(m_view.visibleBounds.se.lat, -89.9, 89.9);
+            const keel::f64 maxLat = keel::clamp(m_view.visibleBounds.nw.lat, -89.9, 89.9);
+            const keel::f64 minLon = keel::clamp(m_view.visibleBounds.nw.lon, -180.0, 180.0);
+            const keel::f64 maxLon = keel::clamp(m_view.visibleBounds.se.lon, -180.0, 180.0);
             constexpr keel::i32 kMeridianSegs = 12;
             constexpr keel::i32 kParallelSegs = 18;
 
             for (const GraticuleLine& m : m_view.meridians) {
                 const Color col = m.isZero ? gratZeroCol : (m.isMajor ? gratMajorCol : gratMinorCol);
-                const float w = (m.isZero ? 1.8f : (m.isMajor ? 1.25f : 0.85f)) * invZ;
+                const keel::f32 w = (m.isZero ? 1.8f : (m.isMajor ? 1.25f : 0.85f)) * invZ;
                 Vec2 prevW = GeoToWorld({minLat, m.degrees});
                 for (keel::i32 s = 1; s <= kMeridianSegs; ++s) {
-                    const double t = static_cast<double>(s) / static_cast<double>(kMeridianSegs);
-                    const double lat = minLat + t * (maxLat - minLat);
+                    const keel::f64 t = keel::as<keel::f64>(s) / keel::as<keel::f64>(kMeridianSegs);
+                    const keel::f64 lat = minLat + t * (maxLat - minLat);
                     const Vec2 currW = GeoToWorld({lat, m.degrees});
                     m_scene.DrawLine(prevW, currW, col, w);
                     prevW = currW;
@@ -335,11 +335,11 @@ void MapViewScope::RenderForegroundOverlays() {
 
             for (const GraticuleLine& p : m_view.parallels) {
                 const Color col = p.isZero ? gratZeroCol : (p.isMajor ? gratMajorCol : gratMinorCol);
-                const float w = (p.isZero ? 1.8f : (p.isMajor ? 1.25f : 0.85f)) * invZ;
+                const keel::f32 w = (p.isZero ? 1.8f : (p.isMajor ? 1.25f : 0.85f)) * invZ;
                 Vec2 prevW = GeoToWorld({p.degrees, minLon});
                 for (keel::i32 s = 1; s <= kParallelSegs; ++s) {
-                    const double t = static_cast<double>(s) / static_cast<double>(kParallelSegs);
-                    const double lon = minLon + t * (maxLon - minLon);
+                    const keel::f64 t = keel::as<keel::f64>(s) / keel::as<keel::f64>(kParallelSegs);
+                    const keel::f64 lon = minLon + t * (maxLon - minLon);
                     const Vec2 currW = GeoToWorld({p.degrees, lon});
                     m_scene.DrawLine(prevW, currW, col, w);
                     prevW = currW;
@@ -357,11 +357,11 @@ void MapViewScope::RenderForegroundOverlays() {
 
         for (const OsmTileCell& cell : m_view.visibleTiles) {
             const Rect& r = cell.worldRect;
-            const float screenTileW = r.w * z;
+            const keel::f32 screenTileW = r.w * z;
 
             if (m_opts.showSubTileQuadtree && screenTileW >= 110.0f) {
-                const float midX = r.x + r.w * 0.5f;
-                const float midY = r.y + r.h * 0.5f;
+                const keel::f32 midX = r.x + r.w * 0.5f;
+                const keel::f32 midY = r.y + r.h * 0.5f;
                 m_scene.DrawLine({midX, r.y}, {midX, r.Bottom()}, subTileCol, 1.0f * invZ);
                 m_scene.DrawLine({r.x, midY}, {r.Right(), midY}, subTileCol, 1.0f * invZ);
             }
@@ -414,10 +414,10 @@ void MapViewScope::RenderForegroundOverlays() {
 
     // 3. OpenSeaMap Nautical Border Rulers (Top Longitude & Left Latitude Bars)
     if (m_opts.showBorderRulers) {
-        const float rulerThick = 20.0f * invZ;
-        const float leftBarW = rulerThick * 3.9f;
-        const float topRulerStartX = visWorld.x + leftBarW;
-        const float leftRulerStartY = visWorld.y + rulerThick;
+        const keel::f32 rulerThick = 20.0f * invZ;
+        const keel::f32 leftBarW = rulerThick * 3.9f;
+        const keel::f32 topRulerStartX = visWorld.x + leftBarW;
+        const keel::f32 leftRulerStartY = visWorld.y + rulerThick;
 
         const Color rulerBg     = m_lightMode ? Color::Rgba(248, 250, 252, 236) : Color::Rgba(11, 18, 30, 236);
         const Color rulerBorder = m_lightMode ? Color::Rgba(148, 163, 184, 200) : Color::Rgba(51, 65, 85, 210);
@@ -433,9 +433,9 @@ void MapViewScope::RenderForegroundOverlays() {
             const GraticuleLine& m = m_view.meridians[i];
             const keel::i32 absIdx = m.stepIndex < 0 ? -m.stepIndex : m.stepIndex;
             if ((absIdx & 1) == 0) {
-                const float nextX = m_view.meridians[i + 1].worldPos;
-                const float x0 = keel::max(topRulerStartX, keel::min(m.worldPos, nextX));
-                const float x1 = keel::min(visWorld.Right(), keel::max(m.worldPos, nextX));
+                const keel::f32 nextX = m_view.meridians[i + 1].worldPos;
+                const keel::f32 x0 = keel::max(topRulerStartX, keel::min(m.worldPos, nextX));
+                const keel::f32 x1 = keel::min(visWorld.Right(), keel::max(m.worldPos, nextX));
                 if (x1 > x0) {
                     m_scene.DrawRect(
                         Rect(x0, visWorld.y + rulerThick - 4.0f * invZ, x1 - x0, 4.0f * invZ),
@@ -449,9 +449,9 @@ void MapViewScope::RenderForegroundOverlays() {
             const GraticuleLine& p = m_view.parallels[i];
             const keel::i32 absIdx = p.stepIndex < 0 ? -p.stepIndex : p.stepIndex;
             if ((absIdx & 1) == 0) {
-                const float nextY = m_view.parallels[i + 1].worldPos;
-                const float y0 = keel::max(leftRulerStartY, keel::min(p.worldPos, nextY));
-                const float y1 = keel::min(visWorld.Bottom(), keel::max(p.worldPos, nextY));
+                const keel::f32 nextY = m_view.parallels[i + 1].worldPos;
+                const keel::f32 y0 = keel::max(leftRulerStartY, keel::min(p.worldPos, nextY));
+                const keel::f32 y1 = keel::min(visWorld.Bottom(), keel::max(p.worldPos, nextY));
                 if (y1 > y0) {
                     m_scene.DrawRect(
                         Rect(leftBar.Right() - 4.0f * invZ, y0, 4.0f * invZ, y1 - y0),
@@ -499,11 +499,11 @@ void MapViewScope::RenderForegroundOverlays() {
 
     // 2. Dual Scale Bar Overlay (Nautical Miles NM/cab + Metric km/m)
     if (m_opts.showScaleBarOverlay) {
-        const float leftOffset = m_opts.showBorderRulers ? 90.0f : 14.0f;
-        const float boxW = 240.0f * invZ;
-        const float boxH = 54.0f * invZ;
-        const float boxX = visWorld.x + leftOffset * invZ;
-        const float boxY = visWorld.Bottom() - (boxH + 14.0f * invZ);
+        const keel::f32 leftOffset = m_opts.showBorderRulers ? 90.0f : 14.0f;
+        const keel::f32 boxW = 240.0f * invZ;
+        const keel::f32 boxH = 54.0f * invZ;
+        const keel::f32 boxX = visWorld.x + leftOffset * invZ;
+        const keel::f32 boxY = visWorld.Bottom() - (boxH + 14.0f * invZ);
 
         const Color hudBg     = m_lightMode ? Color::Rgba(255, 255, 255, 232) : Color::Rgba(11, 18, 30, 232);
         const Color hudBorder = m_lightMode ? Color::Rgba(148, 163, 184, 210) : Color::Rgba(51, 65, 85, 220);
@@ -511,16 +511,16 @@ void MapViewScope::RenderForegroundOverlays() {
 
         m_scene.DrawRect(Rect(boxX, boxY, boxW, boxH), hudBg, 5.0f * invZ, hudBorder, 1.0f * invZ);
 
-        const float nmLenWorld = m_view.nauticalScale.screenPixels * invZ;
-        const float nmY = boxY + 18.0f * invZ;
-        const float barStartX = boxX + 10.0f * invZ;
+        const keel::f32 nmLenWorld = m_view.nauticalScale.screenPixels * invZ;
+        const keel::f32 nmY = boxY + 18.0f * invZ;
+        const keel::f32 barStartX = boxX + 10.0f * invZ;
         m_scene.DrawLine({barStartX, nmY}, {barStartX + nmLenWorld, nmY}, seamarkMagenta, 2.2f * invZ);
         m_scene.DrawLine({barStartX, nmY - 4.0f * invZ}, {barStartX, nmY + 4.0f * invZ}, seamarkMagenta, 1.8f * invZ);
         m_scene.DrawLine({barStartX + nmLenWorld, nmY - 4.0f * invZ}, {barStartX + nmLenWorld, nmY + 4.0f * invZ}, seamarkMagenta, 1.8f * invZ);
         m_scene.DrawText(m_view.nauticalScale.label, {barStartX + nmLenWorld + 8.0f * invZ, nmY - 7.0f * invZ}, 10.5f, hudText, FontStyle::Monospace, false);
 
-        const float mLenWorld = m_view.metricScale.screenPixels * invZ;
-        const float mY = boxY + 38.0f * invZ;
+        const keel::f32 mLenWorld = m_view.metricScale.screenPixels * invZ;
+        const keel::f32 mY = boxY + 38.0f * invZ;
         m_scene.DrawLine({barStartX, mY}, {barStartX + mLenWorld, mY}, seamarkCyan, 2.2f * invZ);
         m_scene.DrawLine({barStartX, mY - 4.0f * invZ}, {barStartX, mY + 4.0f * invZ}, seamarkCyan, 1.8f * invZ);
         m_scene.DrawLine({barStartX + mLenWorld, mY - 4.0f * invZ}, {barStartX + mLenWorld, mY + 4.0f * invZ}, seamarkCyan, 1.8f * invZ);
@@ -538,7 +538,7 @@ MapViewScope MapView::Open(
     auto& sceneState = ctx.GetOrCreatePersistentState<SceneState>(id);
     mapState.lastOpenSeq = ++g_lastAnyMapViewOpenSeq;
 
-    const float worldSize = keel::max(256.0f, opts.worldSize);
+    const keel::f32 worldSize = keel::max(256.0f, opts.worldSize);
 
     // Pre-schedule camera centering before Scene::Open runs UpdateSceneCameraTransform
     if (!mapState.cameraInitialized || !sceneState.initialized || opts.requestResetView) {
@@ -590,7 +590,7 @@ MapViewScope MapView::Open(
     const UiTheme& activeTheme = ctx.GetTheme();
     const bool lightMode = (activeTheme.mode == ThemeMode::Light);
 
-    const float z = keel::max(0.0001f, scene.GetZoom());
+    const keel::f32 z = keel::max(0.0001f, scene.GetZoom());
     const Rect vp = scene.GetViewportRect();
     const Rect visWorld = scene.GetVisibleWorldRect();
     Vec2 mouseWorld = scene.GetMouseWorldPos();

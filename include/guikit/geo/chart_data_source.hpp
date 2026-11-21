@@ -24,11 +24,11 @@ struct SlippyTileKey {
 /// Hash functor for `SlippyTileKey`.
 struct SlippyTileKeyHash {
     [[nodiscard]] keel::usize operator()(const SlippyTileKey& k) const noexcept {
-        keel::u64 h = static_cast<keel::u64>(static_cast<keel::u32>(k.z)) * 0x9E3779B97F4A7C15ULL;
-        h ^= static_cast<keel::u64>(static_cast<keel::u32>(k.x)) * 0xBF58476D1CE4E5B9ULL + (h << 6) + (h >> 2);
-        h ^= static_cast<keel::u64>(static_cast<keel::u32>(k.y)) * 0x94D049BB133111EBULL + (h << 6) + (h >> 2);
-        h ^= static_cast<keel::u64>(k.tileSizePx) * 0xFF51AFD7ED558CCDULL + (h << 6) + (h >> 2);
-        return static_cast<keel::usize>(h);
+        keel::u64 h = keel::as<keel::u64>(keel::as<keel::u32>(k.z)) * 0x9E3779B97F4A7C15ULL;
+        h ^= keel::as<keel::u64>(keel::as<keel::u32>(k.x)) * 0xBF58476D1CE4E5B9ULL + (h << 6) + (h >> 2);
+        h ^= keel::as<keel::u64>(keel::as<keel::u32>(k.y)) * 0x94D049BB133111EBULL + (h << 6) + (h >> 2);
+        h ^= keel::as<keel::u64>(k.tileSizePx) * 0xFF51AFD7ED558CCDULL + (h << 6) + (h >> 2);
+        return keel::as<keel::usize>(h);
     }
 };
 
@@ -41,7 +41,7 @@ struct RasterTileImage {
 
     [[nodiscard]] bool IsValid() const noexcept {
         return width > 0 && height > 0 &&
-               rgbaPixels.size() == static_cast<keel::usize>(width) * static_cast<keel::usize>(height);
+               rgbaPixels.size() == keel::as<keel::usize>(width) * keel::as<keel::usize>(height);
     }
 
     [[nodiscard]] RasterTileImage clone() const {

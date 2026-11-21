@@ -14,11 +14,11 @@ namespace guikit::geo {
 namespace {
 
 [[nodiscard]] constexpr char LowerChar(char c) noexcept {
-    return (c >= 'A' && c <= 'Z') ? static_cast<char>(c + ('a' - 'A')) : c;
+    return (c >= 'A' && c <= 'Z') ? keel::as<char>(c + ('a' - 'A')) : c;
 }
 
 [[nodiscard]] constexpr char UpperChar(char c) noexcept {
-    return (c >= 'a' && c <= 'z') ? static_cast<char>(c - ('a' - 'A')) : c;
+    return (c >= 'a' && c <= 'z') ? keel::as<char>(c - ('a' - 'A')) : c;
 }
 
 [[nodiscard]] bool EqualsIgnoreCaseAscii(keel::StringRef a, keel::StringRef b) noexcept {
@@ -67,10 +67,10 @@ void ExpandNormBounds(guikit::Rect& r, bool& init, guikit::Vec2 p) noexcept {
         r = guikit::Rect(p.x, p.y, 0.0f, 0.0f);
         init = true;
     } else {
-        const float minX = keel::min(r.x, p.x);
-        const float minY = keel::min(r.y, p.y);
-        const float maxX = keel::max(r.Right(), p.x);
-        const float maxY = keel::max(r.Bottom(), p.y);
+        const keel::f32 minX = keel::min(r.x, p.x);
+        const keel::f32 minY = keel::min(r.y, p.y);
+        const keel::f32 maxX = keel::max(r.Right(), p.x);
+        const keel::f32 maxY = keel::max(r.Bottom(), p.y);
         r = guikit::Rect(minX, minY, maxX - minX, maxY - minY);
     }
 }
@@ -91,17 +91,17 @@ void BuildLodRing(
     if (src.size() <= 20) {
         return;
     }
-    const float span = keel::max(normBox.w, normBox.h);
-    const float tol = keel::max(1e-7f, span * 0.015f);
-    const float tolSq = tol * tol;
+    const keel::f32 span = keel::max(normBox.w, normBox.h);
+    const keel::f32 tol = keel::max(1e-7f, span * 0.015f);
+    const keel::f32 tolSq = tol * tol;
 
     outLod.reserve(keel::min<keel::usize>(src.size(), 64));
     outLod.push_back(src.front());
     guikit::Vec2 lastKept = src.front();
 
     for (keel::usize i = 1; i + 1 < src.size(); ++i) {
-        const float dx = src[i].x - lastKept.x;
-        const float dy = src[i].y - lastKept.y;
+        const keel::f32 dx = src[i].x - lastKept.x;
+        const keel::f32 dy = src[i].y - lastKept.y;
         if (dx * dx + dy * dy >= tolSq) {
             outLod.push_back(src[i]);
             lastKept = src[i];
@@ -279,7 +279,7 @@ keel::Arc<const DecodedGeometryPayload> GeoFeature::BuildDecodedGeometryPayload(
     payload->cachedVertexCount = cachedVertexCount;
     payload->cachedPolygonCount = cachedPolygonCount;
     payload->cachedHoleCount = cachedHoleCount;
-    payload->residentHeapBytes = keel::sat_cast<keel::u32>(RefreshResidentHeapBytes());
+    payload->residentHeapBytes = keel::saturate<keel::u32>(RefreshResidentHeapBytes());
     return payload;
 }
 
@@ -378,7 +378,7 @@ keel::usize GeoFeature::RefreshResidentHeapBytes() const noexcept {
     for (const auto& [k, v] : properties) {
         bytes += sizeof(GeoProperty) + k.capacity() + v.string_capacity();
     }
-    residentHeapBytes = keel::sat_cast<keel::u32>(bytes);
+    residentHeapBytes = keel::saturate<keel::u32>(bytes);
     return bytes;
 }
 
@@ -423,10 +423,10 @@ void GeoFeature::RecomputeNormalizedEnvelopeFromBounds() noexcept {
     }
     const guikit::Vec2 nwNorm = guikit::MapGrid::GeoToNormalized(bounds.nw, guikit::MapCrs::EPSG3857_WebMercator);
     const guikit::Vec2 seNorm = guikit::MapGrid::GeoToNormalized(bounds.se, guikit::MapCrs::EPSG3857_WebMercator);
-    const float minX = keel::min(nwNorm.x, seNorm.x);
-    const float maxX = keel::max(nwNorm.x, seNorm.x);
-    const float minY = keel::min(nwNorm.y, seNorm.y);
-    const float maxY = keel::max(nwNorm.y, seNorm.y);
+    const keel::f32 minX = keel::min(nwNorm.x, seNorm.x);
+    const keel::f32 maxX = keel::max(nwNorm.x, seNorm.x);
+    const keel::f32 minY = keel::min(nwNorm.y, seNorm.y);
+    const keel::f32 maxY = keel::max(nwNorm.y, seNorm.y);
     normBounds = guikit::Rect(minX, minY, maxX - minX, maxY - minY);
     normCentroid = guikit::MapGrid::GeoToNormalized(centroid, guikit::MapCrs::EPSG3857_WebMercator);
 }
@@ -442,8 +442,8 @@ void GeoFeature::RecomputeBoundsAndCentroid() {
     normBounds = {};
     bool normInit = false;
 
-    double sumLat = 0.0;
-    double sumLon = 0.0;
+    keel::f64 sumLat = 0.0;
+    keel::f64 sumLon = 0.0;
     keel::usize count = 0;
     keel::usize holeCount = 0;
 
@@ -527,12 +527,12 @@ void GeoFeature::RecomputeBoundsAndCentroid() {
         }
     }
 
-    cachedVertexCount = keel::sat_cast<keel::u32>(count);
-    cachedPolygonCount = keel::sat_cast<keel::u32>(polygons.size());
-    cachedHoleCount = keel::sat_cast<keel::u32>(holeCount);
+    cachedVertexCount = keel::saturate<keel::u32>(count);
+    cachedPolygonCount = keel::saturate<keel::u32>(polygons.size());
+    cachedHoleCount = keel::saturate<keel::u32>(holeCount);
 
     if (count > 0) {
-        centroid = {sumLat / static_cast<double>(count), sumLon / static_cast<double>(count)};
+        centroid = {sumLat / keel::as<keel::f64>(count), sumLon / keel::as<keel::f64>(count)};
     } else if (hasValidBounds) {
         centroid = SrsTransform::BoundsCenter(bounds);
     }
@@ -545,10 +545,10 @@ void GeoFeature::ResolveDisplayName(keel::usize fallbackIndex, keel::StringRef l
     keel::String fallbackTitle;
     keel::String fallbackFeatureType;
 
-    auto extractFloatAttr = [](const AttributeValue& v, float& ioTarget) noexcept {
+    auto extractFloatAttr = [](const AttributeValue& v, keel::f32& ioTarget) noexcept {
         if (!keel::is_nan(ioTarget)) return;
         if (v.is_double() || v.is_int()) {
-            ioTarget = static_cast<float>(v.as_double());
+            ioTarget = keel::as<keel::f32>(v.as_double());
         } else if (v.is_string()) {
             if (const auto res = keel::parse_f32(v.as_string()); res.is_ok()) {
                 ioTarget = res.value();
@@ -638,18 +638,18 @@ void GeoFeature::ResolveDisplayName(keel::usize fallbackIndex, keel::StringRef l
         return;
     }
     if (chartClass == ChartFeatureClass::Sounding && !keel::is_nan(depthMeters)) {
-        name = keel::format("%.1f m", static_cast<double>(depthMeters));
+        name = keel::format("%.1f m", keel::as<keel::f64>(depthMeters));
         return;
     }
     if ((chartClass == ChartFeatureClass::DepthContour || featureCode.as_ref() == "LNDELV") && !keel::is_nan(depthMeters)) {
-        name = keel::format("%.4g m", static_cast<double>(depthMeters));
+        name = keel::format("%.4g m", keel::as<keel::f64>(depthMeters));
         return;
     }
     if (chartClass == ChartFeatureClass::DepthArea && (!keel::is_nan(minDepthMeters) || !keel::is_nan(maxDepthMeters))) {
         name = keel::format(
             "DEPARE %.2g..%.2g m",
-            keel::is_nan(minDepthMeters) ? 0.0 : static_cast<double>(minDepthMeters),
-            keel::is_nan(maxDepthMeters) ? 0.0 : static_cast<double>(maxDepthMeters)
+            keel::is_nan(minDepthMeters) ? 0.0 : keel::as<keel::f64>(minDepthMeters),
+            keel::is_nan(maxDepthMeters) ? 0.0 : keel::as<keel::f64>(maxDepthMeters)
         );
         return;
     }
@@ -709,16 +709,16 @@ keel::String GeoFeature::GetPropertyString(keel::StringRef key) const {
     return {};
 }
 
-float GeoFeature::GetPropertyFloat(keel::StringRef key) const noexcept {
+keel::f32 GeoFeature::GetPropertyFloat(keel::StringRef key) const noexcept {
     if (!propertiesLoaded && pager && sqliteRowId > 0) {
         (void)EnsurePropertiesLoaded();
     }
     for (const auto& [k, v] : properties) {
         if (EqualsIgnoreCaseAscii(k.as_ref(), key) && !v.is_null()) {
-            if (v.is_double() || v.is_int()) return static_cast<float>(v.as_double());
+            if (v.is_double() || v.is_int()) return keel::as<keel::f32>(v.as_double());
         }
     }
-    return keel::Limits<float>::quiet_nan();
+    return keel::Limits<keel::f32>::quiet_nan();
 }
 
 keel::usize GeoFeature::VertexCount() const noexcept {
@@ -730,7 +730,7 @@ keel::usize GeoFeature::VertexCount() const noexcept {
         total += poly.VertexCount();
     }
     if (total == 0 && cachedVertexCount > 0) {
-        return static_cast<keel::usize>(cachedVertexCount);
+        return keel::as<keel::usize>(cachedVertexCount);
     }
     return total;
 }
@@ -749,7 +749,7 @@ keel::usize GeoFeature::HoleCount() const noexcept {
         total += poly.interiorRings.size();
     }
     if (total == 0 && !geometryLoaded && cachedHoleCount > 0) {
-        return static_cast<keel::usize>(cachedHoleCount);
+        return keel::as<keel::usize>(cachedHoleCount);
     }
     return total;
 }
@@ -782,24 +782,24 @@ bool GeoFeature::MatchesSearch(keel::StringRef query) const {
 
 namespace {
 
-void BuildFeatureSpatialIndex(keel::RTree<keel::u32, float>& index, keel::ArrayRef<GeoFeature> features) {
+void BuildFeatureSpatialIndex(keel::RTree<keel::u32, keel::f32>& index, keel::ArrayRef<GeoFeature> features) {
     index.clear();
     if (features.empty()) return;
 
     keel::ArenaTemp scratch = keel::get_scratch();
-    auto* items = scratch.arena().alloc_array<keel::RTreeItem<keel::u32, float>>(features.size());
+    auto* items = scratch.arena().alloc_array<keel::RTreeItem<keel::u32, keel::f32>>(features.size());
     keel::usize count = 0;
-    for (keel::u32 i = 0; i < static_cast<keel::u32>(features.size()); ++i) {
+    for (keel::u32 i = 0; i < keel::as<keel::u32>(features.size()); ++i) {
         const GeoFeature& f = features[i];
         if (!f.hasValidBounds) continue;
         const guikit::Rect& b = f.normBounds;
-        items[count++] = keel::RTreeItem<keel::u32, float>{
+        items[count++] = keel::RTreeItem<keel::u32, keel::f32>{
             .id = i,
-            .box = keel::RTreeBox<float>::from_xywh(b.x, b.y, b.w, b.h).inflated_min_size(1e-7f)
+            .box = keel::RTreeBox<keel::f32>::from_xywh(b.x, b.y, b.w, b.h).inflated_min_size(1e-7f)
         };
     }
     if (count > 0) {
-        index.build(keel::ArrayRef<keel::RTreeItem<keel::u32, float>>(items, count));
+        index.build(keel::ArrayRef<keel::RTreeItem<keel::u32, keel::f32>>(items, count));
     }
 }
 
@@ -832,17 +832,17 @@ void GeoLayer::FinalizeLayer(keel::u64 layerUid, bool forceTriangulateAll) {
         const bool allPrebound = features.empty() ||
             (features.front().sqliteRowId > 0 &&
              features.front().pager != nullptr &&
-             features.front().uid == ((layerUid << 32) | static_cast<keel::u64>(static_cast<keel::u32>(features.front().sqliteRowId))) &&
+             features.front().uid == ((layerUid << 32) | keel::as<keel::u64>(keel::as<keel::u32>(features.front().sqliteRowId))) &&
              !features.front().id.empty() &&
              !features.front().name.empty() &&
-             features.back().uid == ((layerUid << 32) | static_cast<keel::u64>(static_cast<keel::u32>(features.back().sqliteRowId))));
+             features.back().uid == ((layerUid << 32) | keel::as<keel::u64>(keel::as<keel::u32>(features.back().sqliteRowId))));
         if (allPrebound) {
             bounds = savedBounds;
             normBounds = savedNormBounds;
             hasValidBounds = true;
             if (!features.empty()) {
                 for (const GeoFeature& f : features) {
-                    chartClassMask |= (1u << static_cast<keel::u8>(f.chartClass));
+                    chartClassMask |= (1u << keel::as<keel::u8>(f.chartClass));
                     if (f.HasPolygons()) {
                         ++polygonFeatureCount;
                     } else if (f.HasLines()) {
@@ -878,8 +878,8 @@ void GeoLayer::FinalizeLayer(keel::u64 layerUid, bool forceTriangulateAll) {
     for (keel::usize i = 0; i < features.size(); ++i) {
         GeoFeature& feat = features[i];
         const keel::u64 lowId = (isWindowStreamed && feat.sqliteRowId > 0)
-            ? static_cast<keel::u64>(static_cast<keel::u32>(feat.sqliteRowId))
-            : static_cast<keel::u64>(i + 1);
+            ? keel::as<keel::u64>(keel::as<keel::u32>(feat.sqliteRowId))
+            : keel::as<keel::u64>(i + 1);
         const keel::u64 expectedUid = (layerUid << 32) | lowId;
         if (!isWindowStreamed || feat.sqliteRowId <= 0 || feat.uid != expectedUid || feat.id.empty()) {
             feat.uid = expectedUid;
@@ -913,7 +913,7 @@ void GeoLayer::FinalizeLayer(keel::u64 layerUid, bool forceTriangulateAll) {
             feat.ResolveDisplayName(i, layerHint);
         }
 
-        const keel::u8 clsIdx = static_cast<keel::u8>(feat.chartClass);
+        const keel::u8 clsIdx = keel::as<keel::u8>(feat.chartClass);
         if (clsIdx < classCounts.size()) {
             ++classCounts[clsIdx];
             activeClassMask |= (1u << clsIdx);
@@ -953,7 +953,7 @@ void GeoLayer::FinalizeLayer(keel::u64 layerUid, bool forceTriangulateAll) {
     } else {
         dominantChartClass = SrsTransform::ClassifyFeatureCode({}, GeometryType::Point, layerHint);
         chartClassMask = (dominantChartClass != ChartFeatureClass::Generic)
-            ? (1u << static_cast<keel::u8>(dominantChartClass))
+            ? (1u << keel::as<keel::u8>(dominantChartClass))
             : 0u;
     }
 
@@ -1027,14 +1027,14 @@ keel::usize GeoLayer::EvictAllPagedPayloads() const noexcept {
     return freed;
 }
 
-guikit::GeoCoord SrsTransform::ToWgs84(double x, double y, keel::i32 srsId) noexcept {
+guikit::GeoCoord SrsTransform::ToWgs84(keel::f64 x, keel::f64 y, keel::i32 srsId) noexcept {
     // 1. WGS84 / UTM Northern Hemisphere (EPSG:32601 .. EPSG:32660)
     if (srsId >= 32601 && srsId <= 32660) {
         const keel::i32 zone = srsId - 32600;
         const guikit::TransverseMercatorSpec spec{
             .ellipsoid = guikit::EllipsoidSpec::Wgs84(),
             .datumToWgs84 = guikit::Helmert7Spec::Identity(),
-            .centralMeridianDeg = static_cast<double>(zone) * 6.0 - 183.0,
+            .centralMeridianDeg = keel::as<keel::f64>(zone) * 6.0 - 183.0,
             .scaleFactor = 0.9996,
             .falseEasting = 500000.0,
             .falseNorthing = 0.0
@@ -1048,7 +1048,7 @@ guikit::GeoCoord SrsTransform::ToWgs84(double x, double y, keel::i32 srsId) noex
         const guikit::TransverseMercatorSpec spec{
             .ellipsoid = guikit::EllipsoidSpec::Wgs84(),
             .datumToWgs84 = guikit::Helmert7Spec::Identity(),
-            .centralMeridianDeg = static_cast<double>(zone) * 6.0 - 183.0,
+            .centralMeridianDeg = keel::as<keel::f64>(zone) * 6.0 - 183.0,
             .scaleFactor = 0.9996,
             .falseEasting = 500000.0,
             .falseNorthing = 10000000.0
@@ -1059,11 +1059,11 @@ guikit::GeoCoord SrsTransform::ToWgs84(double x, double y, keel::i32 srsId) noex
     // 3. GSK-2011 / Gauss-Kruger Zones 1..60 (EPSG:20901 .. EPSG:20960)
     if (srsId >= 20901 && srsId <= 20960) {
         const keel::i32 zone = srsId - 20900;
-        const double fe = (x >= 1000000.0) ? (static_cast<double>(zone) * 1000000.0 + 500000.0) : 500000.0;
+        const keel::f64 fe = (x >= 1000000.0) ? (keel::as<keel::f64>(zone) * 1000000.0 + 500000.0) : 500000.0;
         const guikit::TransverseMercatorSpec spec{
             .ellipsoid = guikit::EllipsoidSpec::Gsk2011(),
             .datumToWgs84 = guikit::Helmert7Spec::Identity(),
-            .centralMeridianDeg = static_cast<double>(zone) * 6.0 - 3.0,
+            .centralMeridianDeg = keel::as<keel::f64>(zone) * 6.0 - 3.0,
             .scaleFactor = 1.0,
             .falseEasting = fe,
             .falseNorthing = 0.0
@@ -1074,13 +1074,13 @@ guikit::GeoCoord SrsTransform::ToWgs84(double x, double y, keel::i32 srsId) noex
     // 4. Pulkovo 1942 (SK-42) / Gauss-Kruger Zones 1..32 (EPSG:28401..28432 with zone prefix, EPSG:28461..28492 without)
     if ((srsId >= 28401 && srsId <= 28432) || (srsId >= 28461 && srsId <= 28492)) {
         const keel::i32 zone = (srsId >= 28461) ? (srsId - 28460) : (srsId - 28400);
-        const double fe = (srsId < 28461 && x >= 1000000.0)
-            ? (static_cast<double>(zone) * 1000000.0 + 500000.0)
+        const keel::f64 fe = (srsId < 28461 && x >= 1000000.0)
+            ? (keel::as<keel::f64>(zone) * 1000000.0 + 500000.0)
             : 500000.0;
         const guikit::TransverseMercatorSpec spec{
             .ellipsoid = guikit::EllipsoidSpec::Krassowsky1940(),
             .datumToWgs84 = guikit::Helmert7Spec::Sk42ToWgs84(),
-            .centralMeridianDeg = static_cast<double>(zone) * 6.0 - 3.0,
+            .centralMeridianDeg = keel::as<keel::f64>(zone) * 6.0 - 3.0,
             .scaleFactor = 1.0,
             .falseEasting = fe,
             .falseNorthing = 0.0
@@ -1091,13 +1091,13 @@ guikit::GeoCoord SrsTransform::ToWgs84(double x, double y, keel::i32 srsId) noex
     // 5. Pulkovo 1995 (SK-95) / Gauss-Kruger Zones 1..32 (EPSG:20001..20032 with zone prefix, EPSG:20061..20092 without)
     if ((srsId >= 20001 && srsId <= 20032) || (srsId >= 20061 && srsId <= 20092)) {
         const keel::i32 zone = (srsId >= 20061) ? (srsId - 20060) : (srsId - 20000);
-        const double fe = (srsId < 20061 && x >= 1000000.0)
-            ? (static_cast<double>(zone) * 1000000.0 + 500000.0)
+        const keel::f64 fe = (srsId < 20061 && x >= 1000000.0)
+            ? (keel::as<keel::f64>(zone) * 1000000.0 + 500000.0)
             : 500000.0;
         const guikit::TransverseMercatorSpec spec{
             .ellipsoid = guikit::EllipsoidSpec::Krassowsky1940(),
             .datumToWgs84 = guikit::Helmert7Spec::Sk95ToWgs84(),
-            .centralMeridianDeg = static_cast<double>(zone) * 6.0 - 3.0,
+            .centralMeridianDeg = keel::as<keel::f64>(zone) * 6.0 - 3.0,
             .scaleFactor = 1.0,
             .falseEasting = fe,
             .falseNorthing = 0.0
@@ -1136,9 +1136,9 @@ guikit::GeoCoord SrsTransform::ToWgs84(double x, double y, keel::i32 srsId) noex
     const bool looksLikeMeters = (keel::abs(x) > 180.0001 || keel::abs(y) > 90.0001);
 
     if (srsId == 3857 || srsId == 900913 || ((srsId == 4326 || srsId == 7683) && looksLikeMeters)) {
-        constexpr double R = guikit::MapGrid::kEarthRadiusMeters;
-        const double lon = keel::rad_to_deg(x / R);
-        const double lat = keel::rad_to_deg(2.0 * keel::atan(keel::exp(y / R)) - keel::kHalfPi);
+        constexpr keel::f64 R = guikit::MapGrid::kEarthRadiusMeters;
+        const keel::f64 lon = keel::rad_to_deg(x / R);
+        const keel::f64 lat = keel::rad_to_deg(2.0 * keel::atan(keel::exp(y / R)) - keel::kHalfPi);
         return {
             guikit::MapGrid::ClampLat(lat, guikit::MapCrs::EPSG4326_PlateCarree),
             guikit::MapGrid::ClampLon(lon)
@@ -1146,17 +1146,17 @@ guikit::GeoCoord SrsTransform::ToWgs84(double x, double y, keel::i32 srsId) noex
     }
 
     if (srsId == 3395) {
-        constexpr double R = guikit::MapGrid::kEarthRadiusMeters;
-        constexpr double e = guikit::MapGrid::kWgs84Eccentricity;
-        const double lon = keel::rad_to_deg(x / R);
-        const double ts = keel::exp(-y / R);
-        double phi = keel::kHalfPi - 2.0 * keel::atan(ts);
+        constexpr keel::f64 R = guikit::MapGrid::kEarthRadiusMeters;
+        constexpr keel::f64 e = guikit::MapGrid::kWgs84Eccentricity;
+        const keel::f64 lon = keel::rad_to_deg(x / R);
+        const keel::f64 ts = keel::exp(-y / R);
+        keel::f64 phi = keel::kHalfPi - 2.0 * keel::atan(ts);
         for (keel::i32 iter = 0; iter < 6; ++iter) {
-            const double esin = e * keel::sin(phi);
-            const double con = keel::pow((1.0 - esin) / (1.0 + esin), 0.5 * e);
+            const keel::f64 esin = e * keel::sin(phi);
+            const keel::f64 con = keel::pow((1.0 - esin) / (1.0 + esin), 0.5 * e);
             phi = keel::kHalfPi - 2.0 * keel::atan(ts * con);
         }
-        const double lat = keel::rad_to_deg(phi);
+        const keel::f64 lat = keel::rad_to_deg(phi);
         return {
             guikit::MapGrid::ClampLat(lat, guikit::MapCrs::EPSG4326_PlateCarree),
             guikit::MapGrid::ClampLon(lon)
@@ -1180,14 +1180,14 @@ guikit::GeoPlanar SrsTransform::FromWgs84(guikit::GeoCoord coord, keel::i32 srsI
         return Wgs84ToWebMercatorMeters(coord);
     }
     if (srsId == 3395) {
-        constexpr double R = guikit::MapGrid::kEarthRadiusMeters;
-        constexpr double e = guikit::MapGrid::kWgs84Eccentricity;
-        const double lonRad = keel::deg_to_rad(guikit::MapGrid::ClampLon(coord.lon));
-        const double phi = keel::deg_to_rad(
+        constexpr keel::f64 R = guikit::MapGrid::kEarthRadiusMeters;
+        constexpr keel::f64 e = guikit::MapGrid::kWgs84Eccentricity;
+        const keel::f64 lonRad = keel::deg_to_rad(guikit::MapGrid::ClampLon(coord.lon));
+        const keel::f64 phi = keel::deg_to_rad(
             guikit::MapGrid::ClampLat(coord.lat, guikit::MapCrs::EPSG3395_WorldMercator)
         );
-        const double eSin = e * keel::sin(phi);
-        const double cf = keel::pow((1.0 - eSin) / (1.0 + eSin), 0.5 * e);
+        const keel::f64 eSin = e * keel::sin(phi);
+        const keel::f64 cf = keel::pow((1.0 - eSin) / (1.0 + eSin), 0.5 * e);
         return {
             R * lonRad,
             R * keel::log(keel::tan(0.25 * keel::kPi + 0.5 * phi) * cf)
@@ -1198,7 +1198,7 @@ guikit::GeoPlanar SrsTransform::FromWgs84(guikit::GeoCoord coord, keel::i32 srsI
         const guikit::TransverseMercatorSpec spec{
             .ellipsoid = guikit::EllipsoidSpec::Wgs84(),
             .datumToWgs84 = guikit::Helmert7Spec::Identity(),
-            .centralMeridianDeg = static_cast<double>(zone) * 6.0 - 183.0,
+            .centralMeridianDeg = keel::as<keel::f64>(zone) * 6.0 - 183.0,
             .scaleFactor = 0.9996,
             .falseEasting = 500000.0,
             .falseNorthing = 0.0
@@ -1210,7 +1210,7 @@ guikit::GeoPlanar SrsTransform::FromWgs84(guikit::GeoCoord coord, keel::i32 srsI
         const guikit::TransverseMercatorSpec spec{
             .ellipsoid = guikit::EllipsoidSpec::Wgs84(),
             .datumToWgs84 = guikit::Helmert7Spec::Identity(),
-            .centralMeridianDeg = static_cast<double>(zone) * 6.0 - 183.0,
+            .centralMeridianDeg = keel::as<keel::f64>(zone) * 6.0 - 183.0,
             .scaleFactor = 0.9996,
             .falseEasting = 500000.0,
             .falseNorthing = 10000000.0
@@ -1222,20 +1222,20 @@ guikit::GeoPlanar SrsTransform::FromWgs84(guikit::GeoCoord coord, keel::i32 srsI
         const guikit::TransverseMercatorSpec spec{
             .ellipsoid = guikit::EllipsoidSpec::Gsk2011(),
             .datumToWgs84 = guikit::Helmert7Spec::Identity(),
-            .centralMeridianDeg = static_cast<double>(zone) * 6.0 - 3.0,
+            .centralMeridianDeg = keel::as<keel::f64>(zone) * 6.0 - 3.0,
             .scaleFactor = 1.0,
-            .falseEasting = static_cast<double>(zone) * 1000000.0 + 500000.0,
+            .falseEasting = keel::as<keel::f64>(zone) * 1000000.0 + 500000.0,
             .falseNorthing = 0.0
         };
         return guikit::MapGrid::TransverseMercatorForward(coord, spec);
     }
     if ((srsId >= 28401 && srsId <= 28432) || (srsId >= 28461 && srsId <= 28492)) {
         const keel::i32 zone = (srsId >= 28461) ? (srsId - 28460) : (srsId - 28400);
-        const double fe = (srsId >= 28461) ? 500000.0 : (static_cast<double>(zone) * 1000000.0 + 500000.0);
+        const keel::f64 fe = (srsId >= 28461) ? 500000.0 : (keel::as<keel::f64>(zone) * 1000000.0 + 500000.0);
         const guikit::TransverseMercatorSpec spec{
             .ellipsoid = guikit::EllipsoidSpec::Krassowsky1940(),
             .datumToWgs84 = guikit::Helmert7Spec::Sk42ToWgs84(),
-            .centralMeridianDeg = static_cast<double>(zone) * 6.0 - 3.0,
+            .centralMeridianDeg = keel::as<keel::f64>(zone) * 6.0 - 3.0,
             .scaleFactor = 1.0,
             .falseEasting = fe,
             .falseNorthing = 0.0
@@ -1244,11 +1244,11 @@ guikit::GeoPlanar SrsTransform::FromWgs84(guikit::GeoCoord coord, keel::i32 srsI
     }
     if ((srsId >= 20001 && srsId <= 20032) || (srsId >= 20061 && srsId <= 20092)) {
         const keel::i32 zone = (srsId >= 20061) ? (srsId - 20060) : (srsId - 20000);
-        const double fe = (srsId >= 20061) ? 500000.0 : (static_cast<double>(zone) * 1000000.0 + 500000.0);
+        const keel::f64 fe = (srsId >= 20061) ? 500000.0 : (keel::as<keel::f64>(zone) * 1000000.0 + 500000.0);
         const guikit::TransverseMercatorSpec spec{
             .ellipsoid = guikit::EllipsoidSpec::Krassowsky1940(),
             .datumToWgs84 = guikit::Helmert7Spec::Sk95ToWgs84(),
-            .centralMeridianDeg = static_cast<double>(zone) * 6.0 - 3.0,
+            .centralMeridianDeg = keel::as<keel::f64>(zone) * 6.0 - 3.0,
             .scaleFactor = 1.0,
             .falseEasting = fe,
             .falseNorthing = 0.0
@@ -1286,13 +1286,13 @@ guikit::GeoPlanar SrsTransform::FromWgs84(guikit::GeoCoord coord, keel::i32 srsI
 }
 
 guikit::GeoPlanar SrsTransform::Wgs84ToWebMercatorMeters(guikit::GeoCoord coord) noexcept {
-    constexpr double R = guikit::MapGrid::kEarthRadiusMeters;
-    const double lonRad = keel::deg_to_rad(guikit::MapGrid::ClampLon(coord.lon));
-    const double latRad = keel::deg_to_rad(
+    constexpr keel::f64 R = guikit::MapGrid::kEarthRadiusMeters;
+    const keel::f64 lonRad = keel::deg_to_rad(guikit::MapGrid::ClampLon(coord.lon));
+    const keel::f64 latRad = keel::deg_to_rad(
         guikit::MapGrid::ClampLat(coord.lat, guikit::MapCrs::EPSG3857_WebMercator)
     );
-    const double x = R * lonRad;
-    const double y = R * keel::log(keel::tan(0.25 * keel::kPi + 0.5 * latRad));
+    const keel::f64 x = R * lonRad;
+    const keel::f64 y = R * keel::log(keel::tan(0.25 * keel::kPi + 0.5 * latRad));
     return {x, y};
 }
 
@@ -1317,15 +1317,15 @@ void SrsTransform::UnionBounds(guikit::GeoBounds& bounds, bool& initialized, con
 }
 
 bool SrsTransform::BoundsIntersect(const guikit::GeoBounds& a, const guikit::GeoBounds& b) noexcept {
-    const double aMinLon = keel::min(a.nw.lon, a.se.lon);
-    const double aMaxLon = keel::max(a.nw.lon, a.se.lon);
-    const double aMinLat = keel::min(a.se.lat, a.nw.lat);
-    const double aMaxLat = keel::max(a.se.lat, a.nw.lat);
+    const keel::f64 aMinLon = keel::min(a.nw.lon, a.se.lon);
+    const keel::f64 aMaxLon = keel::max(a.nw.lon, a.se.lon);
+    const keel::f64 aMinLat = keel::min(a.se.lat, a.nw.lat);
+    const keel::f64 aMaxLat = keel::max(a.se.lat, a.nw.lat);
 
-    const double bMinLon = keel::min(b.nw.lon, b.se.lon);
-    const double bMaxLon = keel::max(b.nw.lon, b.se.lon);
-    const double bMinLat = keel::min(b.se.lat, b.nw.lat);
-    const double bMaxLat = keel::max(b.se.lat, b.nw.lat);
+    const keel::f64 bMinLon = keel::min(b.nw.lon, b.se.lon);
+    const keel::f64 bMaxLon = keel::max(b.nw.lon, b.se.lon);
+    const keel::f64 bMinLat = keel::min(b.se.lat, b.nw.lat);
+    const keel::f64 bMaxLat = keel::max(b.se.lat, b.nw.lat);
 
     if (aMaxLon < bMinLon || aMinLon > bMaxLon) return false;
     if (aMaxLat < bMinLat || aMinLat > bMaxLat) return false;
@@ -1339,16 +1339,16 @@ guikit::GeoCoord SrsTransform::BoundsCenter(const guikit::GeoBounds& bounds) noe
     };
 }
 
-float SrsTransform::EstimateFitTileZoom(const guikit::GeoBounds& bounds) noexcept {
-    const double dLon = keel::max(1e-5, keel::abs(bounds.se.lon - bounds.nw.lon));
-    const double dLat = keel::max(1e-5, keel::abs(bounds.nw.lat - bounds.se.lat));
-    const double maxSpanDeg = keel::max(dLon, dLat * 1.45);
+keel::f32 SrsTransform::EstimateFitTileZoom(const guikit::GeoBounds& bounds) noexcept {
+    const keel::f64 dLon = keel::max(1e-5, keel::abs(bounds.se.lon - bounds.nw.lon));
+    const keel::f64 dLat = keel::max(1e-5, keel::abs(bounds.nw.lat - bounds.se.lat));
+    const keel::f64 maxSpanDeg = keel::max(dLon, dLat * 1.45);
 
     if (maxSpanDeg <= 0.005) {
         return 14.5f;
     }
-    const double z = keel::log2(360.0 / maxSpanDeg) - 0.35;
-    return static_cast<float>(keel::clamp(z, 1.5, 16.5));
+    const keel::f64 z = keel::log2(360.0 / maxSpanDeg) - 0.35;
+    return keel::as<keel::f32>(keel::clamp(z, 1.5, 16.5));
 }
 
 guikit::Color SrsTransform::DefaultLayerColor(keel::usize paletteIndex) noexcept {
@@ -1490,8 +1490,8 @@ const GeoFeature* FindFeatureByUid(
     const GeoLayer** outLayer
 ) noexcept {
     if (uid == 0) return nullptr;
-    const keel::u32 targetLayerUid = static_cast<keel::u32>(uid >> 32);
-    const keel::u32 oneBasedIdx = static_cast<keel::u32>(uid & 0xFFFFFFFFu);
+    const keel::u32 targetLayerUid = keel::as<keel::u32>(uid >> 32);
+    const keel::u32 oneBasedIdx = keel::as<keel::u32>(uid & 0xFFFFFFFFu);
 
     for (const GeoLayer& lyr : layers) {
         if (lyr.uid == targetLayerUid) {
@@ -1582,11 +1582,11 @@ public:
                 } else if ((px % subStep) == 0 || (py % subStep) == 0) {
                     r = 216; g = 214; b = 204;
                 }
-                tileImg->rgbaPixels[static_cast<keel::usize>(py) * sz + px] =
-                    (static_cast<keel::u32>(255u) << 24u) |
-                    (static_cast<keel::u32>(b) << 16u) |
-                    (static_cast<keel::u32>(g) << 8u) |
-                    static_cast<keel::u32>(r);
+                tileImg->rgbaPixels[keel::as<keel::usize>(py) * sz + px] =
+                    (keel::as<keel::u32>(255u) << 24u) |
+                    (keel::as<keel::u32>(b) << 16u) |
+                    (keel::as<keel::u32>(g) << 8u) |
+                    keel::as<keel::u32>(r);
             }
         }
 

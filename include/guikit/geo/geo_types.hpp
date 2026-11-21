@@ -197,10 +197,10 @@ struct AttributeValue {
 
     template <typename T>
         requires(keel::IsIntegral<T> && !keel::IsSame<keel::RemoveCv<T>, bool>)
-    AttributeValue(T i) noexcept : m_kind(Kind::Int), m_int(static_cast<keel::i64>(i)) {}
+    AttributeValue(T i) noexcept : m_kind(Kind::Int), m_int(keel::as<keel::i64>(i)) {}
 
-    AttributeValue(double d) noexcept : m_kind(Kind::Double), m_double(d) {}
-    AttributeValue(float f) noexcept : m_kind(Kind::Double), m_double(static_cast<double>(f)) {}
+    AttributeValue(keel::f64 d) noexcept : m_kind(Kind::Double), m_double(d) {}
+    AttributeValue(keel::f32 f) noexcept : m_kind(Kind::Double), m_double(keel::as<keel::f64>(f)) {}
 
     AttributeValue(keel::StringRef sv) : m_kind(Kind::String), m_double(0.0), m_str(keel::String::from(sv)) {}
     AttributeValue(const char* s) : m_kind(Kind::String), m_double(0.0), m_str(keel::String::from(s ? s : "")) {}
@@ -261,12 +261,12 @@ struct AttributeValue {
     }
     [[nodiscard]] constexpr keel::i64 as_int() const noexcept {
         if (m_kind == Kind::Int) return m_int;
-        if (m_kind == Kind::Double) return static_cast<keel::i64>(m_double);
+        if (m_kind == Kind::Double) return keel::as<keel::i64>(m_double);
         return 0;
     }
-    [[nodiscard]] constexpr double as_double() const noexcept {
+    [[nodiscard]] constexpr keel::f64 as_double() const noexcept {
         if (m_kind == Kind::Double) return m_double;
-        if (m_kind == Kind::Int) return static_cast<double>(m_int);
+        if (m_kind == Kind::Int) return keel::as<keel::f64>(m_int);
         return 0.0;
     }
     [[nodiscard]] keel::StringRef as_string() const noexcept {
@@ -285,7 +285,7 @@ private:
     union {
         bool m_bool;
         keel::i64 m_int;
-        double m_double;
+        keel::f64 m_double;
     };
     keel::String m_str{};
 };
@@ -343,7 +343,7 @@ public:
     [[nodiscard]] virtual bool NeedsSpatialWindowUpdate(
         const GeoLayer& layer,
         const guikit::GeoBounds& geoViewBounds,
-        float tileZoom,
+        keel::f32 tileZoom,
         bool scaleFiltering
     ) const noexcept {
         (void)layer;
@@ -372,7 +372,7 @@ public:
         GeoLayer& ioLayer,
         const guikit::GeoBounds& geoViewBounds,
         const guikit::Rect& normViewBox,
-        float tileZoom,
+        keel::f32 tileZoom,
         bool scaleFiltering,
         keel::u64 frameTick,
         keel::Array<guikit::Rect>* outDirtiedNormBoxes = nullptr) const {
@@ -415,9 +415,9 @@ struct GeoFeature {
     keel::String featureCode{}; ///< Uppercase S-57 / OGC feature code (e.g. "DEPARE", "SOUNDG", "BOYLAT")
     ChartFeatureClass chartClass{ChartFeatureClass::Generic};
     bool hasLight{false};       ///< True when feature is a light ("LIGHTS") or carries S-57 LITCHR/SIGGRP/VALNMR
-    float depthMeters{keel::Limits<float>::quiet_nan()};
-    float minDepthMeters{keel::Limits<float>::quiet_nan()};
-    float maxDepthMeters{keel::Limits<float>::quiet_nan()};
+    keel::f32 depthMeters{keel::Limits<keel::f32>::quiet_nan()};
+    keel::f32 minDepthMeters{keel::Limits<keel::f32>::quiet_nan()};
+    keel::f32 maxDepthMeters{keel::Limits<keel::f32>::quiet_nan()};
     keel::String lightOrColor{};///< IHO S-57 COLOUR or IALA light descriptor
     keel::String labelRu{};
     keel::String labelEn{};
@@ -474,7 +474,7 @@ struct GeoFeature {
     [[nodiscard]] keel::usize PolygonCount() const noexcept {
         if (!polygons.empty()) return polygons.size();
         if (sharedGeometry && !sharedGeometry->polygons.empty()) return sharedGeometry->polygons.size();
-        return static_cast<keel::usize>(cachedPolygonCount);
+        return keel::as<keel::usize>(cachedPolygonCount);
     }
 
     /// Ensures the vector geometry payload (`polygons`, `lines`, `normLines`, `normExterior`) is resident in RAM.
@@ -531,7 +531,7 @@ struct GeoFeature {
     [[nodiscard]] keel::String GetPropertyString(keel::StringRef key) const;
 
     /// Finds a numeric property by case-insensitive key, or returns NaN if absent.
-    [[nodiscard]] float GetPropertyFloat(keel::StringRef key) const noexcept;
+    [[nodiscard]] keel::f32 GetPropertyFloat(keel::StringRef key) const noexcept;
 
     /// Total number of vertices across all points, lines, and polygon rings.
     [[nodiscard]] keel::usize VertexCount() const noexcept;
@@ -560,7 +560,7 @@ struct SpatialWindowRequest {
     keel::usize savedPolygonCount{0};
     guikit::GeoBounds viewBounds{};
     guikit::Rect normViewBox{};
-    float tileZoom{10.0f};
+    keel::f32 tileZoom{10.0f};
     bool scaleFiltering{true};
     keel::u64 frameTick{0};
     keel::u64 requestGeneration{0};
@@ -571,7 +571,7 @@ struct SpatialWindowSnapshot {
     keel::u64 layerUid{0};
     keel::u64 requestGeneration{0};
     keel::Array<GeoFeature> features{};
-    keel::RTree<keel::u32, float> spatialIndex{};
+    keel::RTree<keel::u32, keel::f32> spatialIndex{};
     keel::Array<guikit::Rect> dirtiedNormBoxes{};
     keel::usize pointFeatureCount{0};
     keel::usize lineFeatureCount{0};
@@ -586,10 +586,10 @@ struct SpatialWindowSnapshot {
 /// Visual styling parameters for rendering a vector GIS layer.
 struct LayerStyle {
     guikit::Color primaryColor{56, 189, 248, 255};
-    float fillOpacity{1.0f};
-    float strokeOpacity{0.92f};
-    float strokeWidthPx{2.0f};
-    float pointRadiusPx{6.5f};
+    keel::f32 fillOpacity{1.0f};
+    keel::f32 strokeOpacity{0.92f};
+    keel::f32 strokeWidthPx{2.0f};
+    keel::f32 pointRadiusPx{6.5f};
     bool renderFill{true};
     bool renderStroke{true};
     bool showLabels{true};
@@ -612,7 +612,7 @@ struct GeoLayer {
 
     keel::Arc<IFeaturePager> pager{};
     keel::Array<GeoFeature> features{};
-    keel::RTree<keel::u32, float> spatialIndex{};
+    keel::RTree<keel::u32, keel::f32> spatialIndex{};
     guikit::GeoBounds bounds{};
     guikit::Rect normBounds{};
     bool hasValidBounds{false};
@@ -632,7 +632,7 @@ struct GeoLayer {
     [[nodiscard]] GeoLayer clone() const;
 
     [[nodiscard]] bool HasChartClass(ChartFeatureClass cls) const noexcept {
-        return (chartClassMask & (1u << static_cast<keel::u8>(cls))) != 0u;
+        return (chartClassMask & (1u << keel::as<keel::u8>(cls))) != 0u;
     }
 
     [[nodiscard]] bool IsExclusivelyChartClasses(keel::u32 allowedMask) const noexcept {
@@ -665,7 +665,7 @@ public:
     /// Supports EPSG:4326, 3857/900913, 3395, 32601..32660 (UTM N), 32701..32760 (UTM S),
     /// 20901..20960 & 7683 (GSK-2011), 28401..28432 / 28461..28492 & 4284 (Pulkovo 1942 / SK-42),
     /// 20001..20032 / 20061..20092 & 4200 (SK-95), 7679 (PZ-90.11), 3995 (Arctic Polar), and 3031 (Antarctic Polar).
-    [[nodiscard]] static guikit::GeoCoord ToWgs84(double x, double y, keel::i32 srsId = 4326) noexcept;
+    [[nodiscard]] static guikit::GeoCoord ToWgs84(keel::f64 x, keel::f64 y, keel::i32 srsId = 4326) noexcept;
 
     /// Converts WGS84 (lat, lon) into target SRS coordinates (x, y) for any supported EPSG code.
     [[nodiscard]] static guikit::GeoPlanar FromWgs84(guikit::GeoCoord coord, keel::i32 srsId = 3857) noexcept;
@@ -686,7 +686,7 @@ public:
     [[nodiscard]] static guikit::GeoCoord BoundsCenter(const guikit::GeoBounds& bounds) noexcept;
 
     /// Computes an appropriate Slippy Map tile zoom level [1..18] to frame `bounds`.
-    [[nodiscard]] static float EstimateFitTileZoom(const guikit::GeoBounds& bounds) noexcept;
+    [[nodiscard]] static keel::f32 EstimateFitTileZoom(const guikit::GeoBounds& bounds) noexcept;
 
     /// Returns a distinct, high-contrast cartographic layer color for a given palette index.
     [[nodiscard]] static guikit::Color DefaultLayerColor(keel::usize paletteIndex) noexcept;

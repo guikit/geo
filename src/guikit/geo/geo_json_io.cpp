@@ -37,7 +37,7 @@ struct JsonValue {
     union {
         bool boolVal;
         keel::i64 intVal;
-        double doubleVal{0.0};
+        keel::f64 doubleVal{0.0};
     };
     keel::StringRef textVal{};
     keel::ArrayRef<JsonValue> arrVal{};
@@ -53,9 +53,9 @@ struct JsonValue {
     [[nodiscard]] constexpr bool IsObject() const noexcept      { return kind == Kind::Object; }
     [[nodiscard]] constexpr bool IsCoordsSlice() const noexcept { return kind == Kind::CoordsSlice; }
 
-    [[nodiscard]] constexpr double AsDouble(double fallback = 0.0) const noexcept {
+    [[nodiscard]] constexpr keel::f64 AsDouble(keel::f64 fallback = 0.0) const noexcept {
         if (kind == Kind::Double) return doubleVal;
-        if (kind == Kind::Int) return static_cast<double>(intVal);
+        if (kind == Kind::Int) return keel::as<keel::f64>(intVal);
         return fallback;
     }
 
@@ -87,19 +87,19 @@ const JsonValue* JsonValue::Find(keel::StringRef key) const noexcept {
 
 void AppendUtf8Codepoint(keel::String& out, keel::u32 cp) {
     if (cp <= 0x7Fu) {
-        out.push_back(static_cast<char>(cp));
+        out.push_back(keel::as<char>(cp));
     } else if (cp <= 0x7FFu) {
-        out.push_back(static_cast<char>(0xC0u | ((cp >> 6) & 0x1Fu)));
-        out.push_back(static_cast<char>(0x80u | (cp & 0x3Fu)));
+        out.push_back(keel::as<char>(0xC0u | ((cp >> 6) & 0x1Fu)));
+        out.push_back(keel::as<char>(0x80u | (cp & 0x3Fu)));
     } else if (cp <= 0xFFFFu) {
-        out.push_back(static_cast<char>(0xE0u | ((cp >> 12) & 0x0Fu)));
-        out.push_back(static_cast<char>(0x80u | ((cp >> 6) & 0x3Fu)));
-        out.push_back(static_cast<char>(0x80u | (cp & 0x3Fu)));
+        out.push_back(keel::as<char>(0xE0u | ((cp >> 12) & 0x0Fu)));
+        out.push_back(keel::as<char>(0x80u | ((cp >> 6) & 0x3Fu)));
+        out.push_back(keel::as<char>(0x80u | (cp & 0x3Fu)));
     } else if (cp <= 0x10FFFFu) {
-        out.push_back(static_cast<char>(0xF0u | ((cp >> 18) & 0x07u)));
-        out.push_back(static_cast<char>(0x80u | ((cp >> 12) & 0x3Fu)));
-        out.push_back(static_cast<char>(0x80u | ((cp >> 6) & 0x3Fu)));
-        out.push_back(static_cast<char>(0x80u | (cp & 0x3Fu)));
+        out.push_back(keel::as<char>(0xF0u | ((cp >> 18) & 0x07u)));
+        out.push_back(keel::as<char>(0x80u | ((cp >> 12) & 0x3Fu)));
+        out.push_back(keel::as<char>(0x80u | ((cp >> 6) & 0x3Fu)));
+        out.push_back(keel::as<char>(0x80u | (cp & 0x3Fu)));
     }
 }
 
@@ -109,9 +109,9 @@ public:
         : m_src(src), m_arena(arena) {
         // Skip UTF-8 BOM if present
         if (m_src.size() >= 3 &&
-            static_cast<keel::u8>(m_src[0]) == 0xEF &&
-            static_cast<keel::u8>(m_src[1]) == 0xBB &&
-            static_cast<keel::u8>(m_src[2]) == 0xBF) {
+            keel::as<keel::u8>(m_src[0]) == 0xEF &&
+            keel::as<keel::u8>(m_src[1]) == 0xBB &&
+            keel::as<keel::u8>(m_src[2]) == 0xBF) {
             m_pos = 3;
         }
     }
@@ -279,9 +279,9 @@ private:
         for (keel::i32 i = 0; i < 4; ++i) {
             const char c = Advance();
             val <<= 4;
-            if (c >= '0' && c <= '9') val |= static_cast<keel::u32>(c - '0');
-            else if (c >= 'a' && c <= 'f') val |= static_cast<keel::u32>(c - 'a' + 10);
-            else if (c >= 'A' && c <= 'F') val |= static_cast<keel::u32>(c - 'A' + 10);
+            if (c >= '0' && c <= '9') val |= keel::as<keel::u32>(c - '0');
+            else if (c >= 'a' && c <= 'f') val |= keel::as<keel::u32>(c - 'a' + 10);
+            else if (c >= 'A' && c <= 'F') val |= keel::as<keel::u32>(c - 'A' + 10);
             else return Fail("Invalid hex digit in \\uXXXX escape");
         }
         outVal = val;
@@ -400,7 +400,7 @@ private:
             if (const auto res = keel::parse_i64(token); res.is_ok()) {
                 out = JsonValue{};
                 out.kind = JsonValue::Kind::Int;
-                out.intVal = static_cast<keel::i64>(res.value());
+                out.intVal = keel::as<keel::i64>(res.value());
                 return true;
             }
         }
@@ -561,7 +561,7 @@ public:
         return false;
     }
 
-    [[nodiscard]] bool ReadDouble(double& out) noexcept {
+    [[nodiscard]] bool ReadDouble(keel::f64& out) noexcept {
         SkipWs();
         if (m_pos >= m_sv.size()) return false;
         const keel::usize start = m_pos;
@@ -582,16 +582,16 @@ public:
     }
 
     // Reads `[lon, lat, ...]` (and optional 3rd Z/depth value)
-    [[nodiscard]] bool ReadCoordPair(guikit::GeoCoord& out, double* outOptionalZ = nullptr) noexcept {
+    [[nodiscard]] bool ReadCoordPair(guikit::GeoCoord& out, keel::f64* outOptionalZ = nullptr) noexcept {
         if (!Consume('[')) return false;
-        double x = 0.0, y = 0.0;
+        keel::f64 x = 0.0, y = 0.0;
         if (!ReadDouble(x)) return false;
         if (!Consume(',')) return false;
         if (!ReadDouble(y)) return false;
         bool firstExtra = true;
         while (Peek() == ',') {
             ++m_pos;
-            double extra = 0.0;
+            keel::f64 extra = 0.0;
             if (!ReadDouble(extra)) break;
             if (firstExtra && outOptionalZ) {
                 *outOptionalZ = extra;
@@ -797,11 +797,11 @@ bool ParseGeometryObject(const JsonValue& geomObj, keel::i32 srsId, GeoFeature& 
     if (gType == "Point") {
         if (isTopLevel) feat.type = GeometryType::Point;
         guikit::GeoCoord pt{};
-        double optZ = keel::Limits<double>::quiet_nan();
+        keel::f64 optZ = keel::Limits<keel::f64>::quiet_nan();
         if (reader.ReadCoordPair(pt, &optZ)) {
             feat.points.push_back(pt);
             if (!keel::is_nan(optZ) && keel::is_nan(feat.depthMeters)) {
-                feat.depthMeters = static_cast<float>(optZ);
+                feat.depthMeters = keel::as<keel::f32>(optZ);
             }
             return true;
         }
@@ -915,9 +915,9 @@ void EscapeJsonString(keel::String& out, keel::StringRef sv) {
             case '\r': out.append("\\r"); break;
             case '\t': out.append("\\t"); break;
             default:
-                if (static_cast<keel::u8>(c) < 0x20u) {
+                if (keel::as<keel::u8>(c) < 0x20u) {
                     char buf[8];
-                    out.append(keel::format_buf(buf, "\\u%04x", static_cast<keel::u32>(static_cast<keel::u8>(c))));
+                    out.append(keel::format_buf(buf, "\\u%04x", keel::as<keel::u32>(keel::as<keel::u8>(c))));
                 } else {
                     out.push_back(c);
                 }
@@ -1158,7 +1158,7 @@ GeoJsonLoadResult GeoJsonIO::ParseThematicLayersFromString(
     };
     keel::Array<RankedLayer> grouped;
     for (GeoFeature& feat : singleRes.layer.features) {
-        const keel::i32 key = CartographicSortRank(feat.chartClass) * 100 + static_cast<keel::i32>(feat.chartClass);
+        const keel::i32 key = CartographicSortRank(feat.chartClass) * 100 + keel::as<keel::i32>(feat.chartClass);
         GeoLayer* target = nullptr;
         for (auto& entry : grouped) {
             if (entry.rankKey == key) {

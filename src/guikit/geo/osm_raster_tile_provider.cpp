@@ -54,9 +54,9 @@ bool DecodePngAndScaleToRgba(
         for (keel::u32 dy = 0; dy < targetSizePx; ++dy) {
             const keel::u32 sy0 = dy * 2u;
             const keel::u32 sy1 = sy0 + 1u;
-            const keel::u32* row0 = srcRgba.data() + static_cast<keel::usize>(sy0) * srcW;
-            const keel::u32* row1 = srcRgba.data() + static_cast<keel::usize>(sy1) * srcW;
-            keel::u32* dstRow = outRgba.data() + static_cast<keel::usize>(dy) * targetSizePx;
+            const keel::u32* row0 = srcRgba.data() + keel::as<keel::usize>(sy0) * srcW;
+            const keel::u32* row1 = srcRgba.data() + keel::as<keel::usize>(sy1) * srcW;
+            keel::u32* dstRow = outRgba.data() + keel::as<keel::usize>(dy) * targetSizePx;
 
             for (keel::u32 dx = 0; dx < targetSizePx; ++dx) {
                 const keel::u32 sx0 = dx * 2u;
@@ -83,31 +83,31 @@ bool DecodePngAndScaleToRgba(
     }
 
     // General bilinear resampling (e.g. 256x256 -> 512x512 or arbitrary dimensions)
-    const float scaleX = static_cast<float>(srcW) / static_cast<float>(targetSizePx);
-    const float scaleY = static_cast<float>(srcH) / static_cast<float>(targetSizePx);
+    const keel::f32 scaleX = keel::as<keel::f32>(srcW) / keel::as<keel::f32>(targetSizePx);
+    const keel::f32 scaleY = keel::as<keel::f32>(srcH) / keel::as<keel::f32>(targetSizePx);
 
     for (keel::u32 dy = 0; dy < targetSizePx; ++dy) {
-        const float srcYf = (static_cast<float>(dy) + 0.5f) * scaleY - 0.5f;
-        const keel::i32 y0 = keel::clamp(keel::floor_i32(srcYf), 0, static_cast<keel::i32>(srcH) - 1);
-        const keel::i32 y1 = keel::clamp(y0 + 1, 0, static_cast<keel::i32>(srcH) - 1);
-        const float fy = keel::clamp(srcYf - static_cast<float>(y0), 0.0f, 1.0f);
-        const float invFy = 1.0f - fy;
+        const keel::f32 srcYf = (keel::as<keel::f32>(dy) + 0.5f) * scaleY - 0.5f;
+        const keel::i32 y0 = keel::clamp(keel::floor_i32(srcYf), 0, keel::as<keel::i32>(srcH) - 1);
+        const keel::i32 y1 = keel::clamp(y0 + 1, 0, keel::as<keel::i32>(srcH) - 1);
+        const keel::f32 fy = keel::clamp(srcYf - keel::as<keel::f32>(y0), 0.0f, 1.0f);
+        const keel::f32 invFy = 1.0f - fy;
 
-        const keel::u32* row0 = srcRgba.data() + static_cast<keel::usize>(y0) * srcW;
-        const keel::u32* row1 = srcRgba.data() + static_cast<keel::usize>(y1) * srcW;
-        keel::u32* dstRow = outRgba.data() + static_cast<keel::usize>(dy) * targetSizePx;
+        const keel::u32* row0 = srcRgba.data() + keel::as<keel::usize>(y0) * srcW;
+        const keel::u32* row1 = srcRgba.data() + keel::as<keel::usize>(y1) * srcW;
+        keel::u32* dstRow = outRgba.data() + keel::as<keel::usize>(dy) * targetSizePx;
 
         for (keel::u32 dx = 0; dx < targetSizePx; ++dx) {
-            const float srcXf = (static_cast<float>(dx) + 0.5f) * scaleX - 0.5f;
-            const keel::i32 x0 = keel::clamp(keel::floor_i32(srcXf), 0, static_cast<keel::i32>(srcW) - 1);
-            const keel::i32 x1 = keel::clamp(x0 + 1, 0, static_cast<keel::i32>(srcW) - 1);
-            const float fx = keel::clamp(srcXf - static_cast<float>(x0), 0.0f, 1.0f);
-            const float invFx = 1.0f - fx;
+            const keel::f32 srcXf = (keel::as<keel::f32>(dx) + 0.5f) * scaleX - 0.5f;
+            const keel::i32 x0 = keel::clamp(keel::floor_i32(srcXf), 0, keel::as<keel::i32>(srcW) - 1);
+            const keel::i32 x1 = keel::clamp(x0 + 1, 0, keel::as<keel::i32>(srcW) - 1);
+            const keel::f32 fx = keel::clamp(srcXf - keel::as<keel::f32>(x0), 0.0f, 1.0f);
+            const keel::f32 invFx = 1.0f - fx;
 
-            const float w00 = invFx * invFy;
-            const float w10 = fx * invFy;
-            const float w01 = invFx * fy;
-            const float w11 = fx * fy;
+            const keel::f32 w00 = invFx * invFy;
+            const keel::f32 w10 = fx * invFy;
+            const keel::f32 w01 = invFx * fy;
+            const keel::f32 w11 = fx * fy;
 
             const keel::u32 p00 = row0[x0];
             const keel::u32 p10 = row0[x1];
@@ -115,11 +115,11 @@ bool DecodePngAndScaleToRgba(
             const keel::u32 p11 = row1[x1];
 
             const auto sampleChannel = [&](keel::u32 shift) noexcept -> keel::u32 {
-                const float val = w00 * static_cast<float>((p00 >> shift) & 0xFFu) +
-                                  w10 * static_cast<float>((p10 >> shift) & 0xFFu) +
-                                  w01 * static_cast<float>((p01 >> shift) & 0xFFu) +
-                                  w11 * static_cast<float>((p11 >> shift) & 0xFFu);
-                return static_cast<keel::u32>(keel::sat_cast<keel::u8>(keel::round_i32(val)));
+                const keel::f32 val = w00 * keel::as<keel::f32>((p00 >> shift) & 0xFFu) +
+                                  w10 * keel::as<keel::f32>((p10 >> shift) & 0xFFu) +
+                                  w01 * keel::as<keel::f32>((p01 >> shift) & 0xFFu) +
+                                  w11 * keel::as<keel::f32>((p11 >> shift) & 0xFFu);
+                return keel::as<keel::u32>(keel::saturate<keel::u8>(keel::round_i32(val)));
             };
 
             const keel::u32 r = sampleChannel(0u);
@@ -238,7 +238,7 @@ private:
     };
 
     [[nodiscard]] static keel::i64 NowSteadyMs() noexcept {
-        return static_cast<keel::i64>(keel::monotonic_ms()) + 1;
+        return keel::as<keel::i64>(keel::monotonic_ms()) + 1;
     }
 
     [[nodiscard]] static SlippyTileKey NormalizeKey(const SlippyTileKey& k) noexcept {
@@ -334,11 +334,11 @@ private:
                 } else if ((px % subStep) == 0 || (py % subStep) == 0) {
                     r = 216; g = 214; b = 204;
                 }
-                const keel::usize idx = static_cast<keel::usize>(py) * sz + px;
-                outRgba[idx] = (static_cast<keel::u32>(255u) << 24u) |
-                               (static_cast<keel::u32>(b) << 16u) |
-                               (static_cast<keel::u32>(g) << 8u) |
-                               static_cast<keel::u32>(r);
+                const keel::usize idx = keel::as<keel::usize>(py) * sz + px;
+                outRgba[idx] = (keel::as<keel::u32>(255u) << 24u) |
+                               (keel::as<keel::u32>(b) << 16u) |
+                               (keel::as<keel::u32>(g) << 8u) |
+                               keel::as<keel::u32>(r);
             }
         }
     }

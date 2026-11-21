@@ -15,7 +15,7 @@ public:
 
     /// Computes signed area of a closed ring in (lon, lat) coordinates.
     /// Positive = Counter-Clockwise (CCW), Negative = Clockwise (CW).
-    [[nodiscard]] static double SignedAreaLonLat(keel::ArrayRef<guikit::GeoCoord> ring) noexcept;
+    [[nodiscard]] static keel::f64 SignedAreaLonLat(keel::ArrayRef<guikit::GeoCoord> ring) noexcept;
 };
 
 } // namespace guikit::geo

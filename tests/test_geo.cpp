@@ -70,7 +70,7 @@ void TestMapGridAndProjections() {
         .maxTileZoom = 18
     };
     const Vec2 helgolandWorld = MapGrid::GeoToWorld(helgoland, cfg.worldSize, cfg.crs);
-    const float sceneZoomZ7 = MapGrid::TileZoomToSceneZoom(7.0f, cfg.baseZoom);
+    const keel::f32 sceneZoomZ7 = MapGrid::TileZoomToSceneZoom(7.0f, cfg.baseZoom);
     CHECK(keel::abs(sceneZoomZ7 - 16.0f) < 1e-4f);
 
     const Rect visibleWorld{
@@ -111,12 +111,12 @@ void TestMapViewWidgetWorkflow() {
 
     MapCrs crs = MapCrs::EPSG3857_WebMercator;
     keel::Optional<GeoCoord> reqCenter{};
-    keel::Optional<float> reqZoom{};
+    keel::Optional<keel::f32> reqZoom{};
     MapViewState lastView{};
     keel::usize itemCount = 0;
 
     auto renderFrame = [&]() {
-        ui.BeginFrame({static_cast<float>(width), static_cast<float>(height)});
+        ui.BeginFrame({keel::as<keel::f32>(width), keel::as<keel::f32>(height)});
         if (auto map = guikit::geo::MapView(ui, {
             .crs = crs,
             .coordFormat = GeoCoordFormat::NauticalDMM,
@@ -149,23 +149,23 @@ void TestMapViewWidgetWorkflow() {
     CHECK(!lastView.meridians.empty());
     CHECK(!lastView.parallels.empty());
     CHECK(itemCount >= 1);
-    CHECK_NEAR(static_cast<float>(lastView.center.lat), 54.1825f, 0.25f);
-    CHECK_NEAR(static_cast<float>(lastView.center.lon), 7.8853f, 0.25f);
+    CHECK_NEAR(keel::as<keel::f32>(lastView.center.lat), 54.1825f, 0.25f);
+    CHECK_NEAR(keel::as<keel::f32>(lastView.center.lon), 7.8853f, 0.25f);
 
     // Switch CRS to EPSG:3395 and verify geographic center is preserved
     crs = MapCrs::EPSG3395_WorldMercator;
     renderFrame();
     CHECK(lastView.crs == MapCrs::EPSG3395_WorldMercator);
-    CHECK_NEAR(static_cast<float>(lastView.center.lat), 54.1825f, 0.25f);
-    CHECK_NEAR(static_cast<float>(lastView.center.lon), 7.8853f, 0.25f);
+    CHECK_NEAR(keel::as<keel::f32>(lastView.center.lat), 54.1825f, 0.25f);
+    CHECK_NEAR(keel::as<keel::f32>(lastView.center.lon), 7.8853f, 0.25f);
 
     // Programmatic camera jump to Strait of Gibraltar (z=8)
     reqCenter = GeoCoord{36.1095, -5.3453};
     reqZoom = 8.0f;
     renderFrame();
     CHECK(lastView.tileZoom == 8);
-    CHECK_NEAR(static_cast<float>(lastView.center.lat), 36.1095f, 0.25f);
-    CHECK_NEAR(static_cast<float>(lastView.center.lon), -5.3453f, 0.25f);
+    CHECK_NEAR(keel::as<keel::f32>(lastView.center.lat), 36.1095f, 0.25f);
+    CHECK_NEAR(keel::as<keel::f32>(lastView.center.lon), -5.3453f, 0.25f);
 
     // Tab-switching & 600-frame GC regression:
     // Simulate a parent stage container where another tab is active for 605 frames (pruning SceneState),
@@ -174,7 +174,7 @@ void TestMapViewWidgetWorkflow() {
     bool showMapTab = false;
     MapViewState tabSwitchView{};
     auto renderTabbedApp = [&]() {
-        ui.BeginFrame({static_cast<float>(width), static_cast<float>(height)});
+        ui.BeginFrame({keel::as<keel::f32>(width), keel::as<keel::f32>(height)});
         if (auto stage = ui.Box({.width = SizeMode::Stretch, .height = SizeMode::Stretch})) {
             if (!showMapTab) {
                 ui.Text("Other Tab Content");
@@ -205,8 +205,8 @@ void TestMapViewWidgetWorkflow() {
     CHECK(tabSwitchView.visibleTiles.size() >= 6);
     CHECK(!tabSwitchView.meridians.empty());
     CHECK(!tabSwitchView.parallels.empty());
-    CHECK_NEAR(static_cast<float>(tabSwitchView.center.lat), 54.1825f, 0.25f);
-    CHECK_NEAR(static_cast<float>(tabSwitchView.center.lon), 7.8853f, 0.25f);
+    CHECK_NEAR(keel::as<keel::f32>(tabSwitchView.center.lat), 54.1825f, 0.25f);
+    CHECK_NEAR(keel::as<keel::f32>(tabSwitchView.center.lon), 7.8853f, 0.25f);
 
     // Verify embedded GIS chart loading (assets/geo/demo_bay.geojson) and GisRenderEngine rasterization
     const auto chart = GeoJsonIO::LoadFromFile("assets/geo/demo_bay.geojson", true);
@@ -219,7 +219,7 @@ void TestMapViewWidgetWorkflow() {
     keel::u64 selUid = 0;
     GisRenderConfig gisCfg{};
     gisCfg.asyncBackgroundStreaming = false;
-    ui.BeginFrame({static_cast<float>(width), static_cast<float>(height)});
+    ui.BeginFrame({keel::as<keel::f32>(width), keel::as<keel::f32>(height)});
     if (auto map = guikit::geo::MapView(ui, {
         .crs = MapCrs::EPSG3857_WebMercator,
         .coordFormat = GeoCoordFormat::NauticalDMM,
@@ -267,7 +267,7 @@ void TestGisDemoBayGeoJsonAndRenderEngine() {
     keel::u64 selectedUid = 0;
 
     for (keel::i32 f = 0; f < 2; ++f) {
-        ui.BeginFrame({static_cast<float>(width), static_cast<float>(height)});
+        ui.BeginFrame({keel::as<keel::f32>(width), keel::as<keel::f32>(height)});
         if (auto map = guikit::geo::MapView(ui, {
             .crs = MapCrs::EPSG3857_WebMercator,
             .initialCenter = res.totalBounds.Center(),
@@ -307,7 +307,7 @@ void TestPanelSashAndBodyOcclusionOverMapViewAndScene() {
     bool mapScopeHovered = false;
     bool mapPanning = false;
     bool childBtnClicked = false;
-    float mapZoom = 1.0f;
+    keel::f32 mapZoom = 1.0f;
     Vec2 isobathCenterScreen{};
     keel::u64 selectedGisUid = 0;
     GisRenderStats gisStats{};
@@ -504,7 +504,7 @@ void TestPanelSashAndBodyOcclusionOverMapViewAndScene() {
     CHECK(mapScopeClicked == false);
 
     // 5. Mouse wheel over BottomPanel or Sidebar must NOT zoom MapView
-    const float zoomBefore = mapZoom;
+    const keel::f32 zoomBefore = mapZoom;
     ui.OnMouseMove({ 300.0f, 500.0f }); // Over BottomPanel
     ui.OnMouseWheel(0.0f, 3.0f);
     renderBellhopLayout();
@@ -554,7 +554,7 @@ void TestGisTileCacheAndTileSourceLambda() {
             geo::GeoLayer& lyr = layers[li];
             lyr.name = keel::format("Layer_{}", li);
             lyr.visible = true;
-            lyr.style.primaryColor = Color(static_cast<keel::u8>(40 + li * 30), 120, 200, 255);
+            lyr.style.primaryColor = Color(keel::as<keel::u8>(40 + li * 30), 120, 200, 255);
             lyr.style.useCustomColor = true;
             lyr.style.fillOpacity = 0.75f;
             lyr.style.strokeWidthPx = 1.25f;
@@ -563,8 +563,8 @@ void TestGisTileCacheAndTileSourceLambda() {
                 for (keel::i32 gy = 0; gy < 6; ++gy) {
                     geo::GeoFeature feat{};
                     feat.type = geo::GeometryType::Polygon;
-                    const double baseLat = 59.80 + gx * 0.06 + static_cast<double>(li) * 0.004;
-                    const double baseLon = 29.70 + gy * 0.08 + static_cast<double>(li) * 0.004;
+                    const keel::f64 baseLat = 59.80 + gx * 0.06 + keel::as<keel::f64>(li) * 0.004;
+                    const keel::f64 baseLon = 29.70 + gy * 0.08 + keel::as<keel::f64>(li) * 0.004;
                     geo::GeoPolygon poly{};
                     poly.exteriorRing.push_back({baseLat, baseLon});
                     poly.exteriorRing.push_back({baseLat, baseLon + 0.045});
@@ -593,7 +593,7 @@ void TestGisTileCacheAndTileSourceLambda() {
         keel::usize totalHits = 0;
         for (keel::i32 step = 0; step < 24; ++step) {
             const GeoCoord stepCenter{59.92 + (step % 4) * 0.03, 29.85 + (step / 8) * 0.04};
-            const float stepZoom = 11.0f + static_cast<float>((step / 2) % 3);
+            const keel::f32 stepZoom = 11.0f + keel::as<keel::f32>((step / 2) % 3);
             ui.BeginFrame({640.0f, 480.0f});
             if (auto map = guikit::geo::MapView(ui, {
                 .initialCenter = stepCenter,

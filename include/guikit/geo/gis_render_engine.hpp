@@ -56,7 +56,7 @@ struct GisRenderStats {
 struct GisRenderConfig {
     bool frustumCulling{true};               ///< Cull features via R-Tree spatial index outside visible viewport
     bool lodSimplification{true};            ///< Use multi-zoom LOD rings and skip sub-pixel segments
-    float lodPixelTolerance{1.25f};          ///< Minimum screen-space pixel distance between consecutive vertices
+    keel::f32 lodPixelTolerance{1.25f};          ///< Minimum screen-space pixel distance between consecutive vertices
     bool enableFeaturePicking{true};         ///< Enable interactive hover hit-testing and click selection highlight on map features
     bool showVertexDotsOnSelect{true};       ///< Render vertex control handles on the currently selected feature
     bool showFeatureCallouts{true};          ///< Render labels, soundings, and seamark callouts
@@ -67,16 +67,16 @@ struct GisRenderConfig {
     bool showCoverageBounds{false};          ///< Render M_COVR coverage outlines
     bool preferRussianLabels{true};          ///< Prefer label_ru over label_en when preferredLanguage is empty
     keel::StringRef preferredLanguage{};     ///< Optional ISO 639-1 language code for localized labels (e.g. "ru", "en", "de", "fr")
-    float safetyContourM{2.0f};              ///< Safety depth contour threshold in meters (default 2.0m)
-    float shallowContourM{1.0f};             ///< Shallow water danger threshold in meters (default 1.0m)
-    float deepContourM{10.0f};               ///< Deep water threshold in meters (default 10.0m)
+    keel::f32 safetyContourM{2.0f};              ///< Safety depth contour threshold in meters (default 2.0m)
+    keel::f32 shallowContourM{1.0f};             ///< Shallow water danger threshold in meters (default 1.0m)
+    keel::f32 deepContourM{10.0f};               ///< Deep water threshold in meters (default 10.0m)
 
     // --- Configurable Tile Engine & Asynchronous Background Streaming ---
     keel::u32 tileSizePx{256};                ///< Offscreen vector/raster tile resolution in pixels (128, 256, or 512)
-    float tileRenderBudgetMs{8.5f};          ///< Maximum milliseconds spent rasterizing new vector tiles per frame
+    keel::f32 tileRenderBudgetMs{8.5f};          ///< Maximum milliseconds spent rasterizing new vector tiles per frame
     keel::u32 maxCompositeTiles{48};          ///< Maximum cached Tier-2 composite screen tiles
     keel::u32 maxLayerTiles{48};              ///< Maximum global cached Tier-1 pixel-bearing layer tiles
-    float featureCacheBudgetMb{64.0f};       ///< Maximum RAM budget (in MB) for resident Out-of-Core feature payloads
+    keel::f32 featureCacheBudgetMb{64.0f};       ///< Maximum RAM budget (in MB) for resident Out-of-Core feature payloads
     bool asyncBackgroundStreaming{true};     ///< Stream spatial windows, geometries, and tiles on background worker threads
     bool showLoadingTilePlaceholders{true};  ///< Render animated cartographic placeholder overlay on tiles loading in background
     bool showCautionAndRestrictedZones{true};///< Render regulatory/caution marine polygons (CTNARE, RESARE, TSEZNE, MIPARE)
@@ -84,8 +84,8 @@ struct GisRenderConfig {
     // --- Multi-Source Raster Basemap Overlay (e.g. Bathymetry over OpenStreetMap) ---
     bool showOsmBasemap{false};              ///< Overlay vector marine charts / bathymetry on top of raster [z/x/y] tiles
     bool hideLandOverBasemap{true};          ///< Suppress opaque S-57 LNDARE fill when basemap is active so basemap land/streets show through
-    float basemapOpacity{1.0f};              ///< Opacity of the underlying raster basemap [0..1]
-    float bathymetryOverBasemapOpacity{0.78f}; ///< Opacity of depth area (DEPARE) fills when overlaid on a raster basemap
+    keel::f32 basemapOpacity{1.0f};              ///< Opacity of the underlying raster basemap [0..1]
+    keel::f32 bathymetryOverBasemapOpacity{0.78f}; ///< Opacity of depth area (DEPARE) fills when overlaid on a raster basemap
     keel::Arc<IRasterTileProvider> customBasemapProvider{}; ///< Optional custom raster tile provider (defaults to registered default or Cartographic Basemap)
 
     // --- Configurable Cartographic Labeling Policy ---

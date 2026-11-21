@@ -9,7 +9,7 @@ namespace guikit::geo {
 
 namespace {
 
-constexpr double kEps = 1e-11;
+constexpr keel::f64 kEps = 1e-11;
 
 [[nodiscard]] bool NearlyEqual(guikit::GeoCoord a, guikit::GeoCoord b) noexcept {
     return keel::abs(a.lon - b.lon) <= kEps && keel::abs(a.lat - b.lat) <= kEps;
@@ -17,7 +17,7 @@ constexpr double kEps = 1e-11;
 
 /// 2D cross product (b - a) x (c - a) in (lon, lat) space.
 /// > 0 if (a, b, c) is a left turn (CCW), < 0 if right turn (CW).
-[[nodiscard]] double Cross2D(guikit::GeoCoord a, guikit::GeoCoord b, guikit::GeoCoord c) noexcept {
+[[nodiscard]] keel::f64 Cross2D(guikit::GeoCoord a, guikit::GeoCoord b, guikit::GeoCoord c) noexcept {
     return (b.lon - a.lon) * (c.lat - a.lat) - (b.lat - a.lat) * (c.lon - a.lon);
 }
 
@@ -28,9 +28,9 @@ constexpr double kEps = 1e-11;
     guikit::GeoCoord b,
     guikit::GeoCoord c
 ) noexcept {
-    const double c1 = Cross2D(a, b, p);
-    const double c2 = Cross2D(b, c, p);
-    const double c3 = Cross2D(c, a, p);
+    const keel::f64 c1 = Cross2D(a, b, p);
+    const keel::f64 c2 = Cross2D(b, c, p);
+    const keel::f64 c3 = Cross2D(c, a, p);
     return (c1 >= -kEps) && (c2 >= -kEps) && (c3 >= -kEps);
 }
 
@@ -69,7 +69,7 @@ void BridgeHoleIntoContour(
     const guikit::GeoCoord M = hole[holeMaxIdx];
 
     // 2. Cast ray M + t * (1, 0) (eastward along constant latitude M.lat) against all contour edges
-    double bestIntersectLon = keel::Limits<double>::infinity();
+    keel::f64 bestIntersectLon = keel::Limits<keel::f64>::infinity();
     keel::usize bestEdgeEndpointIdx = keel::kInvalidIndex;
     guikit::GeoCoord I{};
 
@@ -93,8 +93,8 @@ void BridgeHoleIntoContour(
         }
 
         // Only consider edges where the contour goes downward/upward to the right of M
-        const double t = (M.lat - v0.lat) / (v1.lat - v0.lat);
-        const double xIntersect = v0.lon + t * (v1.lon - v0.lon);
+        const keel::f64 t = (M.lat - v0.lat) / (v1.lat - v0.lat);
+        const keel::f64 xIntersect = v0.lon + t * (v1.lon - v0.lon);
         if (xIntersect >= M.lon - kEps && xIntersect < bestIntersectLon) {
             bestIntersectLon = xIntersect;
             I = {M.lat, xIntersect};
@@ -105,12 +105,12 @@ void BridgeHoleIntoContour(
 
     // Fallback: if ray missed due to numerical edge cases, connect to closest contour vertex
     if (bestEdgeEndpointIdx == keel::kInvalidIndex) {
-        double minDistSq = keel::Limits<double>::infinity();
+        keel::f64 minDistSq = keel::Limits<keel::f64>::infinity();
         bestEdgeEndpointIdx = 0;
         for (keel::usize i = 0; i < n; ++i) {
-            const double dx = contour[i].lon - M.lon;
-            const double dy = contour[i].lat - M.lat;
-            const double d2 = dx * dx + dy * dy;
+            const keel::f64 dx = contour[i].lon - M.lon;
+            const keel::f64 dy = contour[i].lat - M.lat;
+            const keel::f64 d2 = dx * dx + dy * dy;
             if (d2 < minDistSq) {
                 minDistSq = d2;
                 bestEdgeEndpointIdx = i;
@@ -127,8 +127,8 @@ void BridgeHoleIntoContour(
                 keel::swap(triB, triC);
             }
 
-            double minAngleCos = -2.0; // We want smallest angle with +X axis (i.e. largest cos)
-            double minDistSq = keel::Limits<double>::infinity();
+            keel::f64 minAngleCos = -2.0; // We want smallest angle with +X axis (i.e. largest cos)
+            keel::f64 minDistSq = keel::Limits<keel::f64>::infinity();
             keel::usize visibleIdx = bestEdgeEndpointIdx;
 
             for (keel::usize i = 0; i < n; ++i) {
@@ -140,11 +140,11 @@ void BridgeHoleIntoContour(
                 // Reflex vertex check in CCW contour
                 if (Cross2D(prev, curr, next) <= kEps) {
                     if (PointInTriangleCCW(curr, triA, triB, triC)) {
-                        const double dx = curr.lon - M.lon;
-                        const double dy = curr.lat - M.lat;
-                        const double distSq = dx * dx + dy * dy;
+                        const keel::f64 dx = curr.lon - M.lon;
+                        const keel::f64 dy = curr.lat - M.lat;
+                        const keel::f64 distSq = dx * dx + dy * dy;
                         if (distSq > kEps) {
-                            const double angleCos = dx / keel::sqrt(distSq);
+                            const keel::f64 angleCos = dx / keel::sqrt(distSq);
                             if (angleCos > minAngleCos + kEps ||
                                 (keel::abs(angleCos - minAngleCos) <= kEps && distSq < minDistSq)) {
                                 minAngleCos = angleCos;
@@ -180,9 +180,9 @@ void BridgeHoleIntoContour(
 
 } // namespace
 
-double PolygonTriangulator::SignedAreaLonLat(keel::ArrayRef<guikit::GeoCoord> ring) noexcept {
+keel::f64 PolygonTriangulator::SignedAreaLonLat(keel::ArrayRef<guikit::GeoCoord> ring) noexcept {
     if (ring.size() < 3) return 0.0;
-    double area2 = 0.0;
+    keel::f64 area2 = 0.0;
     const keel::usize n = ring.size();
     for (keel::usize i = 0; i < n; ++i) {
         const auto& p0 = ring[i];
@@ -219,7 +219,7 @@ void PolygonTriangulator::TriangulatePolygon(GeoPolygon& poly) {
     if (!poly.interiorRings.empty()) {
         struct PreparedHole {
             keel::Array<guikit::GeoCoord> ring{};
-            double maxLon{-keel::Limits<double>::infinity()};
+            keel::f64 maxLon{-keel::Limits<keel::f64>::infinity()};
         };
         keel::Array<PreparedHole> holes;
         holes.reserve(poly.interiorRings.size());
@@ -230,7 +230,7 @@ void PolygonTriangulator::TriangulatePolygon(GeoPolygon& poly) {
             if (SignedAreaLonLat(cleaned) > 0.0) {
                 keel::reverse(cleaned.as_mut_ref());
             }
-            double maxLon = cleaned[0].lon;
+            keel::f64 maxLon = cleaned[0].lon;
             for (const auto& pt : cleaned) {
                 maxLon = keel::max(maxLon, pt.lon);
             }
@@ -255,7 +255,7 @@ void PolygonTriangulator::TriangulatePolygon(GeoPolygon& poly) {
     keel::SmallArray<keel::u32, 64> indices;
     indices.resize(totalVerts);
     for (keel::usize i = 0; i < totalVerts; ++i) {
-        indices[i] = static_cast<keel::u32>(i);
+        indices[i] = keel::as<keel::u32>(i);
     }
 
     auto isEar = [&](keel::usize idxInList, bool strictPointCheck) -> bool {
@@ -265,7 +265,7 @@ void PolygonTriangulator::TriangulatePolygon(GeoPolygon& poly) {
         const guikit::GeoCoord c = contour[indices[(idxInList + 1) % m]];
 
         // Must be a convex vertex (left turn in CCW contour)
-        const double cross = Cross2D(a, b, c);
+        const keel::f64 cross = Cross2D(a, b, c);
         if (cross <= kEps) {
             return false;
         }
