@@ -837,6 +837,91 @@ void TestGisAsyncTileStreamingStress() {
     keel::println("  [PASS] TestGisAsyncTileStreamingStress completed");
 }
 
+void TestGisFeatureSelectionAndEmptyClickDeselect() {
+    keel::println("  -> TestGisFeatureSelectionAndEmptyClickDeselect...");
+
+    keel::Array<geo::GeoLayer> layers;
+    layers.resize(1);
+    geo::GeoLayer& lyr = layers[0];
+    lyr.name = keel::String::from("Buoys");
+    lyr.visible = true;
+    geo::GeoFeature buoy{};
+    buoy.id = keel::String::from("buoy_1");
+    buoy.name = keel::String::from("North Cardinal");
+    buoy.type = geo::GeometryType::Point;
+    buoy.chartClass = geo::ChartFeatureClass::Generic;
+    buoy.points.push_back({44.60, 33.50});
+    lyr.features.push_back(keel::move(buoy));
+    lyr.FinalizeLayer(29001u);
+
+    TestCanvas canvas;
+    keel::Array<keel::u32> fb(800u * 600u, 0u);
+    canvas.SetTarget(fb.data(), 800, 600, 800);
+
+    Context ui;
+    GisRenderConfig cfg{};
+    cfg.useVectorTileCache = false;
+    cfg.asyncBackgroundStreaming = false;
+    cfg.enableFeaturePicking = true;
+
+    keel::u64 selectedUid = 0;
+    Vec2 buoyScreenPos{};
+    auto runFrame = [&]() {
+        ui.BeginFrame({800.0f, 600.0f});
+        if (auto map = guikit::geo::MapView(ui, {
+            .initialCenter = {44.60, 33.50},
+            .initialTileZoom = 13.0f,
+            .height = SizeMode::Stretch
+        })) {
+            buoyScreenPos = map.GeoToScreen({44.60, 33.50});
+            (void)GisRenderEngine::RenderLayers(map, layers, cfg, selectedUid, true);
+        }
+        ui.EndFrame(canvas);
+    };
+
+    // Settle initial camera bounds
+    runFrame();
+    runFrame();
+    CHECK(selectedUid == 0u);
+
+    // 1. Click directly on the buoy -> selects it
+    ui.OnMouseMove(buoyScreenPos);
+    runFrame();
+    ui.OnMouseDown(1);
+    runFrame();
+    ui.OnMouseUp(1);
+    runFrame();
+    runFrame();
+    CHECK(selectedUid != 0u);
+    const keel::u64 pickedUid = selectedUid;
+
+    // 2. Drag-pan across empty space -> must preserve selection (panning must not deselect)
+    const Vec2 emptyPos{buoyScreenPos.x + 180.0f, buoyScreenPos.y + 120.0f};
+    ui.OnMouseMove(emptyPos);
+    runFrame();
+    ui.OnMouseDown(1);
+    runFrame();
+    ui.OnMouseMove({emptyPos.x + 60.0f, emptyPos.y + 40.0f});
+    runFrame();
+    ui.OnMouseUp(1);
+    runFrame();
+    runFrame();
+    CHECK(selectedUid == pickedUid);
+
+    // 3. Click on empty space without dragging -> clears selection
+    const Vec2 emptyClickPos{200.0f, 160.0f};
+    ui.OnMouseMove(emptyClickPos);
+    runFrame();
+    ui.OnMouseDown(1);
+    runFrame();
+    ui.OnMouseUp(1);
+    runFrame();
+    runFrame();
+    CHECK(selectedUid == 0u);
+
+    keel::println("  [PASS] TestGisFeatureSelectionAndEmptyClickDeselect completed");
+}
+
 int main() {
     keel::println("[RUN] Testing GuiKit Geo module...");
 #if !defined(GUIKIT_HAS_BACKEND_THORVG) || !GUIKIT_HAS_BACKEND_THORVG
@@ -852,6 +937,7 @@ int main() {
     TestPanelSashAndBodyOcclusionOverMapViewAndScene();
     TestGisTileCacheAndTileSourceLambda();
     TestGisAsyncTileStreamingStress();
+    TestGisFeatureSelectionAndEmptyClickDeselect();
     if (g_failures == 0) {
         keel::println("[PASS] All GuiKit Geo tests passed successfully!");
         return 0;

@@ -281,6 +281,12 @@ GisRenderStats GisRenderEngine::RenderLayers(
             }
         }
     }
+    if (cfg.enableFeaturePicking && scene.WasBackgroundClicked()) {
+        ioSelectedFeatureUid = 0;
+    }
+    if (ioSelectedFeatureUid == 0 && scene.GetSelectedCount() > 0) {
+        scene.ClearSelection();
+    }
 
     // Locate currently selected feature in O(1) via packed (layerUid << 32 | idx)
     const geo::GeoLayer* selectedLayer = nullptr;

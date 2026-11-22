@@ -59,7 +59,7 @@ struct MapViewOptions {
     bool zoomable{true};
     bool pannable{true};
     bool selectableItems{true};
-    bool showScrollbars{true};
+    bool showScrollbars{false};
     bool showControls{true};
     bool clampToWorld{true};
     StateColor background{};
