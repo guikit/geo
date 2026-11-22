@@ -1080,6 +1080,7 @@ struct AsyncLayerTileJobKeyHasher {
 struct InFlightTileStamp {
     keel::u64 styleHash{0};
     keel::u64 windowUpdateFrame{0};
+    keel::u64 epoch{0};
 };
 
 struct WindowGenCounter {
@@ -1433,8 +1434,9 @@ public:
 
         const keel::u32 hw = keel::max(2u, keel::hardware_concurrency());
         const keel::u32 numTileWorkers = keel::clamp<keel::u32>(hw / 2u, 2u, 4u);
-        m_tilePool = keel::make_unique<keel::ThreadPool>(numTileWorkers);
-        m_tileDispatcher = std::thread([this]() { TileDispatcherLoop(); });
+        for (keel::u32 i = 0; i < numTileWorkers; ++i) {
+            m_tileWorkers.emplace_back([this]() { TileWorkerLoop(); });
+        }
 
         for (keel::usize i = 0; i < 2; ++i) {
             m_basemapWorkers.emplace_back([this]() { BasemapWorkerLoop(); });
@@ -1458,8 +1460,9 @@ public:
         m_basemapCv.notify_all();
 
         if (m_windowWorker.joinable()) m_windowWorker.join();
-        if (m_tileDispatcher.joinable()) m_tileDispatcher.join();
-        m_tilePool.reset();
+        for (auto& t : m_tileWorkers) {
+            if (t.joinable()) t.join();
+        }
         for (auto& t : m_basemapWorkers) {
             if (t.joinable()) t.join();
         }
@@ -1627,19 +1630,23 @@ public:
     }
 
     [[nodiscard]] bool IsLayerTilePending(const AsyncLayerTileJobKey& key, keel::u64 styleHash, keel::u64 windowUpdateFrame) const {
+        const keel::u64 curEpoch = GetCurrentEpoch();
         std::scoped_lock lk(m_tileMutex);
         if (const auto* inFlight = m_inFlightTileKeys.get(key)) {
-            if (inFlight->styleHash == styleHash && inFlight->windowUpdateFrame == windowUpdateFrame) {
+            if (inFlight->epoch == curEpoch && inFlight->styleHash == styleHash &&
+                inFlight->windowUpdateFrame == windowUpdateFrame) {
                 return true;
             }
         }
         for (const AsyncLayerTileJob& job : m_pendingTileJobs) {
-            if (job.jobKey == key && job.styleHash == styleHash && job.windowUpdateFrame == windowUpdateFrame) {
+            if (job.epoch == curEpoch && job.jobKey == key && job.styleHash == styleHash &&
+                job.windowUpdateFrame == windowUpdateFrame) {
                 return true;
             }
         }
         for (const AsyncLayerTileResult& res : m_completedTileResults) {
-            if (res.jobKey == key && res.styleHash == styleHash && res.windowUpdateFrame == windowUpdateFrame) {
+            if (res.epoch == curEpoch && res.jobKey == key && res.styleHash == styleHash &&
+                res.windowUpdateFrame == windowUpdateFrame) {
                 return true;
             }
         }
@@ -1652,7 +1659,8 @@ public:
         {
             std::scoped_lock lk(m_tileMutex);
             if (const auto* inFlight = m_inFlightTileKeys.get(job.jobKey)) {
-                if (inFlight->styleHash == job.styleHash && inFlight->windowUpdateFrame == job.windowUpdateFrame) {
+                if (inFlight->epoch == job.epoch && inFlight->styleHash == job.styleHash &&
+                    inFlight->windowUpdateFrame == job.windowUpdateFrame) {
                     return;
                 }
             }
@@ -1883,24 +1891,21 @@ private:
         keel::Array<guikit::Vec2> scratchB;
     };
 
-    void TileDispatcherLoop() {
-        const keel::usize numTileWorkers = m_tilePool ? keel::as<keel::usize>(m_tilePool->num_workers()) : 1u;
-        keel::Array<TileWorkerScratch> scratchSlots;
-        scratchSlots.resize(numTileWorkers);
-        for (TileWorkerScratch& slot : scratchSlots) {
-            slot.canvas = CreateCanvasThreadSafe();
-            slot.fillPath.Reserve(256, 256);
-            slot.strokePath.Reserve(512, 512);
-        }
+    void TileWorkerLoop() {
+        // Each worker thread constructs, uses, and destroys its OWN offscreen ICanvas strictly on
+        // this thread. ThorVG's SwRenderer binds a thread_local SwMpool* on construction, so strict
+        // 1:1 thread affinity eliminates cross-thread memory pool races completely.
+        TileWorkerScratch slot{};
+        slot.canvas = CreateCanvasThreadSafe();
+        slot.fillPath.Reserve(256, 256);
+        slot.strokePath.Reserve(512, 512);
 
         keel::u64 localTrimGen = m_trimGeneration.load(std::memory_order_acquire);
-        keel::SmallArray<AsyncLayerTileJob, 8> batch;
-        keel::SmallArray<AsyncLayerTileResult, 8> batchResults;
-        keel::SmallArray<bool, 8> batchValid;
 
         for (;;) {
-            batch.clear();
-            bool shouldTrimWorkers = false;
+            AsyncLayerTileJob job{};
+            bool hasJob = false;
+            bool shouldTrimWorker = false;
             {
                 std::unique_lock lk(m_tileMutex);
                 m_tileCv.wait(lk, [this, &localTrimGen]() {
@@ -1915,150 +1920,130 @@ private:
                 if (curTrimGen != localTrimGen) {
                     localTrimGen = curTrimGen;
                     if (m_pendingTileJobs.empty()) {
-                        shouldTrimWorkers = true;
+                        shouldTrimWorker = true;
                     }
                 }
-                if (!shouldTrimWorkers) {
+                if (!shouldTrimWorker && !m_pendingTileJobs.empty()) {
                     const keel::i32 curZ = m_activeTileZoom.load(std::memory_order_relaxed);
-                    while (batch.size() < numTileWorkers && !m_pendingTileJobs.empty()) {
-                        // Pick the job matching `curZ` and closest to viewport center (`distSq`)
-                        keel::usize bestIdx = 0;
-                        for (keel::usize i = 1; i < m_pendingTileJobs.size(); ++i) {
-                            const bool bestMatchesZ = (m_pendingTileJobs[bestIdx].jobKey.z == curZ);
-                            const bool curMatchesZ = (m_pendingTileJobs[i].jobKey.z == curZ);
-                            if (curMatchesZ != bestMatchesZ) {
-                                if (curMatchesZ) bestIdx = i;
-                            } else if (m_pendingTileJobs[i].distSq < m_pendingTileJobs[bestIdx].distSq) {
-                                bestIdx = i;
-                            }
+                    // Pick the job matching `curZ` and closest to viewport center (`distSq`)
+                    keel::usize bestIdx = 0;
+                    for (keel::usize i = 1; i < m_pendingTileJobs.size(); ++i) {
+                        const bool bestMatchesZ = (m_pendingTileJobs[bestIdx].jobKey.z == curZ);
+                        const bool curMatchesZ = (m_pendingTileJobs[i].jobKey.z == curZ);
+                        if (curMatchesZ != bestMatchesZ) {
+                            if (curMatchesZ) bestIdx = i;
+                        } else if (m_pendingTileJobs[i].distSq < m_pendingTileJobs[bestIdx].distSq) {
+                            bestIdx = i;
                         }
-                        AsyncLayerTileJob job = keel::move(m_pendingTileJobs[bestIdx]);
-                        m_pendingTileJobs.swap_remove(bestIdx);
-                        m_inFlightTileKeys.put(job.jobKey, InFlightTileStamp{job.styleHash, job.windowUpdateFrame});
-                        ++m_inFlightTileCount;
-                        batch.push_back(keel::move(job));
                     }
+                    job = keel::move(m_pendingTileJobs[bestIdx]);
+                    m_pendingTileJobs.swap_remove(bestIdx);
+                    m_inFlightTileKeys.put(
+                        job.jobKey, InFlightTileStamp{job.styleHash, job.windowUpdateFrame, job.epoch}
+                    );
+                    ++m_inFlightTileCount;
+                    hasJob = true;
                 }
             }
 
-            if (shouldTrimWorkers) {
-                for (TileWorkerScratch& slot : scratchSlots) {
-                    if (slot.canvas) {
-                        slot.canvas->TrimCaches();
-                    }
-                    slot.fillPath = guikit::VectorPath{};
-                    slot.strokePath = guikit::VectorPath{};
-                    slot.clippedRing = {};
-                    slot.scratchA = {};
-                    slot.scratchB = {};
+            if (shouldTrimWorker) {
+                if (slot.canvas) {
+                    slot.canvas->TrimCaches();
                 }
+                slot.fillPath = guikit::VectorPath{};
+                slot.strokePath = guikit::VectorPath{};
+                slot.clippedRing = {};
+                slot.scratchA = {};
+                slot.scratchB = {};
                 keel::memory_trim();
                 continue;
             }
 
-            if (batch.empty()) {
+            if (!hasJob) {
                 continue;
             }
 
-            batchResults.clear();
-            batchResults.resize(batch.size());
-            batchValid.assign(batch.size(), false);
+            AsyncLayerTileResult res{};
+            bool valid = false;
+            const keel::i32 activeZ = m_activeTileZoom.load(std::memory_order_relaxed);
+            const bool obsoleteZoom = (keel::abs(job.jobKey.z - activeZ) > 1);
+            if (!obsoleteZoom && job.epoch == GetCurrentEpoch()) {
+                res.jobKey = job.jobKey;
+                res.topologyHash = job.topologyHash;
+                res.styleHash = job.styleHash;
+                res.windowUpdateFrame = job.windowUpdateFrame;
+                res.epoch = job.epoch;
+                res.queryBox = job.queryBox;
 
-            auto runRange = [&](keel::usize begin, keel::usize end) {
-                for (keel::usize idx = begin; idx < end; ++idx) {
-                    AsyncLayerTileJob& job = batch[idx];
-                    TileWorkerScratch& slot = scratchSlots[idx];
-                    const keel::i32 activeZ = m_activeTileZoom.load(std::memory_order_relaxed);
-                    const bool obsoleteZoom = (keel::abs(job.jobKey.z - activeZ) > 1);
-                    if (obsoleteZoom || job.epoch != GetCurrentEpoch()) {
-                        continue;
+                bool aborted = false;
+                for (AsyncTileCandidate& cand : job.candidates) {
+                    if (job.epoch != GetCurrentEpoch()) {
+                        aborted = true;
+                        break;
                     }
-
-                    AsyncLayerTileResult& res = batchResults[idx];
-                    res.jobKey = job.jobKey;
-                    res.topologyHash = job.topologyHash;
-                    res.styleHash = job.styleHash;
-                    res.windowUpdateFrame = job.windowUpdateFrame;
-                    res.epoch = job.epoch;
-                    res.queryBox = job.queryBox;
-
-                    bool aborted = false;
-                    for (AsyncTileCandidate& cand : job.candidates) {
-                        if (job.epoch != GetCurrentEpoch()) {
-                            aborted = true;
-                            break;
-                        }
-                        if (!cand.payload && job.pager) {
-                            cand.payload = job.pager->GetOrLoadGeometryPayload(
-                                cand.sqliteRowId, cand.srsId, 0
-                            );
-                            if (cand.payload) {
-                                res.newlyLoadedPayloads.push_back(AsyncLoadedFeaturePayload{
-                                    .layerUid = job.jobKey.layerUid,
-                                    .featureIndex = cand.featureIndex,
-                                    .featureUid = cand.featureUid,
-                                    .payload = cand.payload
-                                });
-                            }
-                        }
-                    }
-
-                    if (!slot.canvas) {
-                        slot.canvas = CreateCanvasThreadSafe();
-                    }
-                    if (!aborted && slot.canvas && job.epoch == GetCurrentEpoch()) {
-                        RasterizeCandidatesToPixels(
-                            *slot.canvas,
-                            slot.fillPath,
-                            slot.strokePath,
-                            slot.clippedRing,
-                            slot.scratchA,
-                            slot.scratchB,
-                            job.candidates,
-                            job.cell,
-                            job.crs,
-                            job.jobKey.tileSizePx,
-                            job.queryBox,
-                            job.lodSimplification,
-                            job.lodPixelTolerance,
-                            res.pixels,
-                            res.hasAnyGeometry
+                    if (!cand.payload && job.pager) {
+                        cand.payload = job.pager->GetOrLoadGeometryPayload(
+                            cand.sqliteRowId, cand.srsId, 0
                         );
-                    }
-
-                    if (!aborted && job.epoch == GetCurrentEpoch()) {
-                        batchValid[idx] = true;
+                        if (cand.payload) {
+                            res.newlyLoadedPayloads.push_back(AsyncLoadedFeaturePayload{
+                                .layerUid = job.jobKey.layerUid,
+                                .featureIndex = cand.featureIndex,
+                                .featureUid = cand.featureUid,
+                                .payload = cand.payload
+                            });
+                        }
                     }
                 }
-            };
 
-            if (m_tilePool) {
-                m_tilePool->run(batch.size(), runRange);
-            } else {
-                runRange(0u, batch.size());
+                if (!slot.canvas) {
+                    slot.canvas = CreateCanvasThreadSafe();
+                }
+                if (!aborted && slot.canvas && job.epoch == GetCurrentEpoch()) {
+                    RasterizeCandidatesToPixels(
+                        *slot.canvas,
+                        slot.fillPath,
+                        slot.strokePath,
+                        slot.clippedRing,
+                        slot.scratchA,
+                        slot.scratchB,
+                        job.candidates,
+                        job.cell,
+                        job.crs,
+                        job.jobKey.tileSizePx,
+                        job.queryBox,
+                        job.lodSimplification,
+                        job.lodPixelTolerance,
+                        res.pixels,
+                        res.hasAnyGeometry
+                    );
+                }
+
+                if (!aborted && job.epoch == GetCurrentEpoch()) {
+                    valid = true;
+                }
             }
 
             {
                 std::scoped_lock lk(m_tileMutex);
-                for (keel::usize idx = 0; idx < batch.size(); ++idx) {
-                    m_inFlightTileKeys.remove(batch[idx].jobKey);
-                    if (m_inFlightTileCount > 0) --m_inFlightTileCount;
-                    if (batchValid[idx] && batchResults[idx].epoch == GetCurrentEpoch()) {
-                        if (m_completedTileResults.size() >= 256u) {
-                            GetTilePixelPool().Recycle(m_completedTileResults[0].pixels);
-                            m_completedTileResults.swap_remove(0u);
-                        }
-                        m_completedTileResults.push_back(keel::move(batchResults[idx]));
-                    } else {
-                        GetTilePixelPool().Recycle(batchResults[idx].pixels);
+                if (const auto* inFlight = m_inFlightTileKeys.get(job.jobKey);
+                    inFlight && inFlight->epoch == job.epoch) {
+                    m_inFlightTileKeys.remove(job.jobKey);
+                }
+                if (m_inFlightTileCount > 0) --m_inFlightTileCount;
+                if (valid && res.epoch == GetCurrentEpoch()) {
+                    if (m_completedTileResults.size() >= 256u) {
+                        GetTilePixelPool().Recycle(m_completedTileResults[0].pixels);
+                        m_completedTileResults.swap_remove(0u);
                     }
+                    m_completedTileResults.push_back(keel::move(res));
+                } else {
+                    GetTilePixelPool().Recycle(res.pixels);
                 }
             }
         }
 
-        for (TileWorkerScratch& slot : scratchSlots) {
-            DestroyCanvasThreadSafe(slot.canvas);
-        }
+        DestroyCanvasThreadSafe(slot.canvas);
     }
 
     void BasemapWorkerLoop() {
@@ -2135,8 +2120,7 @@ private:
     keel::HashMap<AsyncLayerTileJobKey, InFlightTileStamp, AsyncLayerTileJobKeyHasher> m_inFlightTileKeys;
     keel::Array<AsyncLayerTileResult> m_completedTileResults;
     keel::usize m_inFlightTileCount{0};
-    keel::UniquePtr<keel::ThreadPool> m_tilePool;
-    std::thread m_tileDispatcher;
+    keel::Array<std::thread> m_tileWorkers;
 
     mutable std::mutex m_basemapMutex;
     std::condition_variable m_basemapCv;
@@ -2232,6 +2216,7 @@ public:
     void SyncConfig(const GisRenderConfig& cfg, guikit::MapCrs crs, keel::StringRef basemapSourceId) {
         const keel::u32 newTileSize = ResolveTileSizePx(cfg.tileSizePx);
         if (newTileSize != m_tileSizePx || crs != m_activeCrs) {
+            GetAsyncStreamer().ClearAndBumpEpoch();
             Clear();
             keel::usize newNumTilePx = 0;
             (void)keel::checked_mul<keel::usize>(newTileSize, newTileSize, newNumTilePx);
@@ -2255,12 +2240,6 @@ public:
         const keel::usize rawMaxComp = keel::clamp<keel::usize>(cfg.maxCompositeTiles, 16u, 2048u);
         m_maxLayerTiles = keel::max<keel::usize>(16u, rawMaxLayer / tileAreaScale);
         m_maxCompositeTiles = keel::max<keel::usize>(16u, rawMaxComp / tileAreaScale);
-        if (m_compositeTiles.size() > m_maxCompositeTiles) {
-            EvictOldestCompositeTiles(m_maxCompositeTiles);
-        }
-        if (m_pixelLayerTileCount > m_maxLayerTiles) {
-            EnforceGlobalLayerPixelBudget(~keel::u64{0});
-        }
     }
 
     [[nodiscard]] keel::u32 GetTileSizePx() const noexcept { return m_tileSizePx; }
@@ -2451,9 +2430,12 @@ public:
         return m_basemapTiles.contains(key);
     }
 
-    [[nodiscard]] const geo::RasterTileImage* FindBasemapTile(const TileCoordKey& key) const noexcept {
-        if (const auto* ptr = m_basemapTiles.get(key); ptr && *ptr && (*ptr)->IsValid()) {
-            return ptr->get();
+    [[nodiscard]] const geo::RasterTileImage* FindBasemapTile(const TileCoordKey& key, keel::u64 frameTick = 0ULL) noexcept {
+        if (auto* entry = m_basemapTiles.get(key); entry && entry->image && entry->image->IsValid()) {
+            if (frameTick != 0ULL) {
+                entry->lastUsedFrame = frameTick;
+            }
+            return entry->image.get();
         }
         return nullptr;
     }
@@ -2465,18 +2447,31 @@ public:
     bool StoreBasemapTile(
         keel::StringRef sourceId,
         const geo::SlippyTileKey& tileKey,
-        keel::Arc<const geo::RasterTileImage> img
+        keel::Arc<const geo::RasterTileImage> img,
+        keel::u64 frameTick
     ) {
         if (!img || !img->IsValid() || tileKey.tileSizePx != m_tileSizePx || sourceId != m_activeBasemapSourceId) {
             return false;
         }
+        const TileCoordKey key{tileKey.z, tileKey.x, tileKey.y};
         const keel::usize maxBasemapTiles = keel::min<keel::usize>(m_maxCompositeTiles, 32u);
-        while (m_basemapTiles.size() >= maxBasemapTiles && !m_basemapTiles.empty()) {
-            const TileCoordKey victimKey = (*m_basemapTiles.begin()).key;
+        while (m_basemapTiles.size() >= maxBasemapTiles && !m_basemapTiles.contains(key) && !m_basemapTiles.empty()) {
+            bool found = false;
+            TileCoordKey victimKey{};
+            keel::u64 oldestFrame = ~keel::u64{0};
+            for (auto [k, v] : m_basemapTiles) {
+                if (v.lastUsedFrame < frameTick && v.lastUsedFrame < oldestFrame) {
+                    oldestFrame = v.lastUsedFrame;
+                    victimKey = k;
+                    found = true;
+                }
+            }
+            if (!found) {
+                break;
+            }
             m_basemapTiles.remove(victimKey);
         }
-        const TileCoordKey key{tileKey.z, tileKey.x, tileKey.y};
-        m_basemapTiles.put(key, keel::move(img));
+        m_basemapTiles.put(key, CachedBasemapTile{.image = keel::move(img), .lastUsedFrame = frameTick});
         ++m_basemapGeneration;
 
         if (CompositeTile* comp = m_compositeTiles.get(key)) {
@@ -2496,6 +2491,46 @@ public:
         return comp;
     }
 
+    void PinVisibleBasemapTiles(
+        keel::ArrayRef<guikit::OsmTileCell> visibleTiles,
+        keel::u64 frameTick
+    ) noexcept {
+        for (const guikit::OsmTileCell& cell : visibleTiles) {
+            const TileCoordKey key{cell.id.z, cell.id.x, cell.id.y};
+            if (CachedBasemapTile* bm = m_basemapTiles.get(key)) {
+                bm->lastUsedFrame = frameTick;
+            }
+        }
+    }
+
+    void PinVisibleTiles(
+        keel::ArrayRef<guikit::OsmTileCell> visibleTiles,
+        keel::ArrayRef<LayerTileStore*> stores,
+        keel::u64 frameTick
+    ) noexcept {
+        for (const guikit::OsmTileCell& cell : visibleTiles) {
+            const TileCoordKey key{cell.id.z, cell.id.x, cell.id.y};
+            if (CompositeTile* comp = m_compositeTiles.get(key)) {
+                comp->lastUsedFrame = frameTick;
+            }
+            if (CachedBasemapTile* bm = m_basemapTiles.get(key)) {
+                bm->lastUsedFrame = frameTick;
+            }
+            for (LayerTileStore* store : stores) {
+                if (!store) continue;
+                if (CachedVectorTile* lt = store->tiles.get(key)) {
+                    lt->lastUsedFrame = frameTick;
+                }
+            }
+        }
+    }
+
+    void EnforceCompositeBudget(keel::u64 protectedFrameTick) noexcept {
+        if (m_compositeTiles.size() > m_maxCompositeTiles) {
+            EvictOldestCompositeTiles(m_maxCompositeTiles, protectedFrameTick);
+        }
+    }
+
     CompositeTile& BuildCompositeTile(
         const TileCoordKey& key,
         const guikit::Rect& normQueryBox,
@@ -2507,7 +2542,10 @@ public:
         keel::u8 basemapOpacityByte = 255
     ) {
         if (m_compositeTiles.size() >= m_maxCompositeTiles && !m_compositeTiles.contains(key)) {
-            EvictOldestCompositeTiles(m_maxCompositeTiles - keel::min<keel::usize>(24u, m_maxCompositeTiles / 4u));
+            EvictOldestCompositeTiles(
+                m_maxCompositeTiles - keel::min<keel::usize>(24u, m_maxCompositeTiles / 4u),
+                frameTick
+            );
         }
         keel::usize numTilePx = 0;
         if (!keel::checked_mul<keel::usize>(m_tileSizePx, m_tileSizePx, numTilePx)) {
@@ -2593,7 +2631,10 @@ public:
 
         // Perform eviction and map insertion BEFORE taking any pointers into m_compositeTiles!
         if (m_compositeTiles.size() >= m_maxCompositeTiles && !m_compositeTiles.contains(key)) {
-            EvictOldestCompositeTiles(m_maxCompositeTiles - keel::min<keel::usize>(24u, m_maxCompositeTiles / 4u));
+            EvictOldestCompositeTiles(
+                m_maxCompositeTiles - keel::min<keel::usize>(24u, m_maxCompositeTiles / 4u),
+                frameTick
+            );
         }
 
         CompositeTile& comp = m_compositeTiles.get_or_insert(key);
@@ -2924,24 +2965,38 @@ public:
         return &tile;
     }
 
-    void EnforceGlobalLayerPixelBudget(keel::u64 protectedFrameTick) noexcept {
+    void EnforceGlobalLayerPixelBudget(
+        keel::u64 protectedFrameTick,
+        keel::u64 activeCompositeSignature = 0ULL
+    ) noexcept {
         if (m_pixelLayerTileCount <= m_maxLayerTiles) {
             return;
         }
         const keel::usize targetCount = m_maxLayerTiles - keel::min<keel::usize>(16u, m_maxLayerTiles / 8u);
 
-        // Pass 1: Prefer evicting Tier-1 pixel buffers whose [z/x/y] already has a complete CompositeTile
+        // Pass 1: Prefer evicting Tier-1 pixel buffers whose [z/x/y] already has a complete CompositeTile.
+        // Offscreen tiles (lastUsedFrame < protectedFrameTick) are evicted first; current-frame tiles are
+        // only reclaimed here if their CompositeTile is already complete AND matches `activeCompositeSignature`
+        // (so Fast-path 1 blits directly from the CompositeTile with zero re-rasterization or flicker).
         while (m_pixelLayerTileCount > targetCount) {
             LayerTileStore* victimStore = nullptr;
             TileCoordKey victimKey{};
             keel::u64 oldestFrame = ~keel::u64{0};
             for (auto [uid, store] : m_layerStores) {
                 for (auto [k, v] : store.tiles) {
-                    if (v.pixels.capacity() == 0u || v.lastUsedFrame >= protectedFrameTick) {
+                    if (v.pixels.capacity() == 0u) {
                         continue;
                     }
                     const CompositeTile* comp = m_compositeTiles.get(k);
-                    if (comp && comp->isComplete && !comp->pixels.empty() && v.lastUsedFrame < oldestFrame) {
+                    if (!comp || !comp->isComplete || comp->pixels.empty()) {
+                        continue;
+                    }
+                    if (v.lastUsedFrame >= protectedFrameTick) {
+                        if (activeCompositeSignature == 0ULL || comp->compositeSignature != activeCompositeSignature) {
+                            continue;
+                        }
+                    }
+                    if (v.lastUsedFrame < oldestFrame) {
                         oldestFrame = v.lastUsedFrame;
                         victimStore = &store;
                         victimKey = k;
@@ -2957,7 +3012,8 @@ public:
             victimStore->tiles.remove(victimKey);
         }
 
-        // Pass 2: Fallback global LRU eviction across all older pixel-bearing Tier-1 tiles
+        // Pass 2: Fallback global LRU eviction strictly restricted to offscreen/older Tier-1 tiles
+        // (never evicts an in-progress visible cell's Tier-1 tiles while sibling layers are still loading).
         while (m_pixelLayerTileCount > targetCount) {
             LayerTileStore* victimStore = nullptr;
             TileCoordKey victimKey{};
@@ -3003,6 +3059,11 @@ private:
         }
         store.tiles = {};
     }
+    struct CachedBasemapTile {
+        keel::Arc<const geo::RasterTileImage> image;
+        keel::u64 lastUsedFrame{0};
+    };
+
     bool BlendBasemapTileOrAncestor(
         keel::u32* dstPixels,
         const TileCoordKey& key,
@@ -3012,10 +3073,10 @@ private:
         if (!keel::checked_mul<keel::usize>(m_tileSizePx, m_tileSizePx, numTilePx)) {
             return false;
         }
-        if (const auto* exactPtr = m_basemapTiles.get(key);
-            exactPtr && *exactPtr && (*exactPtr)->rgbaPixels.size() == numTilePx) {
+        if (const CachedBasemapTile* exactPtr = m_basemapTiles.get(key);
+            exactPtr && exactPtr->image && exactPtr->image->rgbaPixels.size() == numTilePx) {
             BlendStraightRgbaBasemapOntoComposite(
-                dstPixels, (*exactPtr)->rgbaPixels.data(), opacityByte, m_tileSizePx
+                dstPixels, exactPtr->image->rgbaPixels.data(), opacityByte, m_tileSizePx
             );
             return true;
         }
@@ -3024,9 +3085,9 @@ private:
         for (keel::i32 shift = 1; shift <= 3; ++shift) {
             if (key.z - shift < 0) break;
             const TileCoordKey parentKey{key.z - shift, key.x >> shift, key.y >> shift};
-            if (const auto* pPtr = m_basemapTiles.get(parentKey);
-                pPtr && *pPtr && (*pPtr)->rgbaPixels.size() == numTilePx) {
-                const keel::u32* srcData = (*pPtr)->rgbaPixels.data();
+            if (const CachedBasemapTile* pPtr = m_basemapTiles.get(parentKey);
+                pPtr && pPtr->image && pPtr->image->rgbaPixels.size() == numTilePx) {
+                const keel::u32* srcData = pPtr->image->rgbaPixels.data();
                 const keel::u32 subSpan = keel::max(1u, m_tileSizePx >> shift);
                 const keel::u32 qx = keel::as<keel::u32>(key.x & ((1 << shift) - 1)) * subSpan;
                 const keel::u32 qy = keel::as<keel::u32>(key.y & ((1 << shift) - 1)) * subSpan;
@@ -3072,15 +3133,23 @@ private:
         }
     }
 
-    void EvictOldestCompositeTiles(keel::usize targetCount) noexcept {
+    void EvictOldestCompositeTiles(
+        keel::usize targetCount,
+        keel::u64 protectedFrameTick = ~keel::u64{0}
+    ) noexcept {
         while (m_compositeTiles.size() > targetCount && !m_compositeTiles.empty()) {
-            TileCoordKey oldestKey = (*m_compositeTiles.begin()).key;
-            keel::u64 oldestFrame = (*m_compositeTiles.begin()).value.lastUsedFrame;
+            bool found = false;
+            TileCoordKey oldestKey{};
+            keel::u64 oldestFrame = ~keel::u64{0};
             for (auto [k, v] : m_compositeTiles) {
-                if (v.lastUsedFrame < oldestFrame) {
+                if (v.lastUsedFrame < protectedFrameTick && v.lastUsedFrame < oldestFrame) {
                     oldestFrame = v.lastUsedFrame;
                     oldestKey = k;
+                    found = true;
                 }
+            }
+            if (!found) {
+                break;
             }
             if (CompositeTile* victim = m_compositeTiles.get(oldestKey)) {
                 GetTilePixelPool().Recycle(victim->pixels);
@@ -3101,7 +3170,7 @@ private:
     keel::usize m_pixelLayerTileCount{0};
     keel::HashMap<keel::u64, LayerTileStore> m_layerStores;
     keel::HashMap<TileCoordKey, CompositeTile, TileCoordKeyHasher> m_compositeTiles;
-    keel::HashMap<TileCoordKey, keel::Arc<const geo::RasterTileImage>, TileCoordKeyHasher> m_basemapTiles;
+    keel::HashMap<TileCoordKey, CachedBasemapTile, TileCoordKeyHasher> m_basemapTiles;
     mutable keel::Array<keel::u32> m_upscaledBasemapScratch;
     keel::Array<keel::u32> m_queryIndices;
     keel::Array<guikit::Vec2> m_clippedRing;
@@ -4783,16 +4852,6 @@ GisRenderStats GisRenderEngine::RenderLayers(
         const keel::u32 tileSizePx = cache.GetTileSizePx();
         const keel::f32 tileSizeF = cache.GetTileSizeF();
 
-        if (useBasemapOverlay) {
-            keel::Array<AsyncBasemapResult> completedBasemapTiles;
-            GetAsyncStreamer().DrainCompletedBasemapTiles(completedBasemapTiles);
-            for (AsyncBasemapResult& bm : completedBasemapTiles) {
-                if (cache.StoreBasemapTile(bm.sourceId.as_ref(), bm.tileKey, keel::move(bm.image))) {
-                    ++stats.cachedTilesRendered;
-                }
-            }
-        }
-
         struct OrderedLayerEntry {
             keel::usize layerIdx{0};
             const geo::GeoLayer* layer{nullptr};
@@ -4831,11 +4890,27 @@ GisRenderStats GisRenderEngine::RenderLayers(
                 .isActiveStyle = (keel::as<keel::i32>(li) == cfg.activeStyleLayerIdx)
             });
         }
+        keel::Array<PerLayerTileCacheManager::LayerTileStore*> visibleStores;
+        visibleStores.reserve(tileLayers.size());
         for (OrderedLayerEntry& entry : tileLayers) {
             entry.store = &cache.SyncLayerStore(*entry.layer, viewState.crs);
+            visibleStores.push_back(entry.store);
+        }
+        // Pin all currently visible Tier-1, Tier-2 & basemap tiles to `s_frameCounter` BEFORE draining async results
+        // so `StoreAsyncLayerTile` / `StoreBasemapTile` can NEVER evict visible tiles while sibling layers finish.
+        cache.PinVisibleTiles(viewState.visibleTiles, visibleStores, s_frameCounter);
+
+        if (useBasemapOverlay) {
+            keel::Array<AsyncBasemapResult> completedBasemapTiles;
+            GetAsyncStreamer().DrainCompletedBasemapTiles(completedBasemapTiles);
+            for (AsyncBasemapResult& bm : completedBasemapTiles) {
+                if (cache.StoreBasemapTile(bm.sourceId.as_ref(), bm.tileKey, keel::move(bm.image), s_frameCounter)) {
+                    ++stats.cachedTilesRendered;
+                }
+            }
         }
 
-        // Drain completed background layer tiles AFTER `SyncLayerStore` so `activeTopologyHash` is initialized
+        // Drain completed background layer tiles AFTER `SyncLayerStore` & `PinVisibleTiles`
         if (useAsyncStreaming) {
             keel::Array<AsyncLayerTileResult> completedLayerTiles;
             GetAsyncStreamer().DrainCompletedLayerTiles(completedLayerTiles);
@@ -4916,7 +4991,7 @@ GisRenderStats GisRenderEngine::RenderLayers(
                 const geo::SlippyTileKey bmKey{cell.id.z, cell.id.x, cell.id.y, tileSizePx};
                 auto cachedBm = activeBasemapProvider->TryGetCachedTile(bmKey);
                 if (cachedBm && cachedBm->IsValid()) {
-                    if (cache.StoreBasemapTile(basemapSourceId, bmKey, keel::move(cachedBm))) {
+                    if (cache.StoreBasemapTile(basemapSourceId, bmKey, keel::move(cachedBm), s_frameCounter)) {
                         ++stats.cachedTilesRendered;
                     }
                 } else {
@@ -5133,7 +5208,8 @@ GisRenderStats GisRenderEngine::RenderLayers(
             }
         }
 
-        cache.EnforceGlobalLayerPixelBudget(s_frameCounter);
+        cache.EnforceCompositeBudget(s_frameCounter);
+        cache.EnforceGlobalLayerPixelBudget(s_frameCounter, compositeSignature);
 
         if (useAsyncStreaming || useBasemapOverlay) {
             stats.cachedTilesPending += GetAsyncStreamer().GetPendingLayerTileCount() +
@@ -5174,12 +5250,13 @@ GisRenderStats GisRenderEngine::RenderLayers(
         if (useBasemapOverlay && !viewState.visibleTiles.empty()) {
             PerLayerTileCacheManager& cache = GetTileCache();
             cache.SyncConfig(cfg, viewState.crs, basemapSourceId);
+            cache.PinVisibleBasemapTiles(viewState.visibleTiles, s_frameCounter);
             const keel::u32 tileSizePx = cache.GetTileSizePx();
 
             keel::Array<AsyncBasemapResult> completedBasemapTiles;
             GetAsyncStreamer().DrainCompletedBasemapTiles(completedBasemapTiles);
             for (AsyncBasemapResult& bm : completedBasemapTiles) {
-                if (cache.StoreBasemapTile(bm.sourceId.as_ref(), bm.tileKey, keel::move(bm.image))) {
+                if (cache.StoreBasemapTile(bm.sourceId.as_ref(), bm.tileKey, keel::move(bm.image), s_frameCounter)) {
                     ++stats.cachedTilesRendered;
                 }
             }
@@ -5191,7 +5268,7 @@ GisRenderStats GisRenderEngine::RenderLayers(
                     const geo::SlippyTileKey bmKey{cell.id.z, cell.id.x, cell.id.y, tileSizePx};
                     auto cachedBm = activeBasemapProvider->TryGetCachedTile(bmKey);
                     if (cachedBm && cachedBm->IsValid()) {
-                        if (cache.StoreBasemapTile(basemapSourceId, bmKey, keel::move(cachedBm))) {
+                        if (cache.StoreBasemapTile(basemapSourceId, bmKey, keel::move(cachedBm), s_frameCounter)) {
                             ++stats.cachedTilesRendered;
                         }
                     } else {
@@ -5200,7 +5277,7 @@ GisRenderStats GisRenderEngine::RenderLayers(
                         GetAsyncStreamer().EnqueueBasemapTileJob(activeBasemapProvider, bmKey, dx * dx + dy * dy);
                     }
                 }
-                if (const geo::RasterTileImage* bm = cache.FindBasemapTile(key)) {
+                if (const geo::RasterTileImage* bm = cache.FindBasemapTile(key, s_frameCounter)) {
                     scene.DrawPixels(
                         {bm->rgbaPixels, bm->width, bm->height},
                         cell.worldRect,

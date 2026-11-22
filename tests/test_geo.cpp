@@ -704,6 +704,139 @@ void TestGisTileCacheAndTileSourceLambda() {
     keel::println("  [PASS] TestGisTileCacheAndTileSourceLambda completed");
 }
 
+void TestGisAsyncTileStreamingStress() {
+    keel::println("  -> TestGisAsyncTileStreamingStress...");
+    GisRenderEngine::InvalidateTileCache();
+
+    // Build 6 dense polygon layers (> 60 polygons intersecting each visible tile) so tiles bypass
+    // `isLightweightInRamTile` and genuinely stress parallel background ThorVG tile workers + tight cache eviction.
+    keel::Array<geo::GeoLayer> layers;
+    layers.resize(6u);
+    for (keel::usize li = 0; li < layers.size(); ++li) {
+        geo::GeoLayer& lyr = layers[li];
+        lyr.name = keel::format("AsyncDenseLayer_{}", li);
+        lyr.visible = true;
+        lyr.style.primaryColor = Color(keel::as<keel::u8>(50 + li * 30), 140, 210, 255);
+        lyr.style.useCustomColor = true;
+        lyr.style.fillOpacity = 0.7f;
+        lyr.style.strokeWidthPx = 1.1f;
+
+        for (keel::i32 gx = 0; gx < 10; ++gx) {
+            for (keel::i32 gy = 0; gy < 10; ++gy) {
+                geo::GeoFeature feat{};
+                feat.type = geo::GeometryType::Polygon;
+                const keel::f64 lat = 44.52 + gx * 0.018 + keel::as<keel::f64>(li) * 0.001;
+                const keel::f64 lon = 33.40 + gy * 0.022 + keel::as<keel::f64>(li) * 0.001;
+                geo::GeoPolygon poly{};
+                for (keel::i32 k = 0; k < 12; ++k) {
+                    const keel::f64 ang = keel::as<keel::f64>(k) * (2.0 * keel::kPi / 12.0);
+                    poly.exteriorRing.push_back({
+                        lat + 0.008 * keel::sin(ang),
+                        lon + 0.010 * keel::cos(ang)
+                    });
+                }
+                poly.exteriorRing.push_back(poly.exteriorRing[0]);
+                feat.polygons.push_back(keel::move(poly));
+                lyr.features.push_back(keel::move(feat));
+            }
+        }
+        lyr.FinalizeLayer(19000u + li);
+    }
+
+    TestCanvas canvas;
+    keel::Array<keel::u32> fb(1024u * 768u, 0u);
+    canvas.SetTarget(fb.data(), 1024, 768, 1024);
+
+    Context ui;
+    GisRenderConfig cfg{};
+    cfg.asyncBackgroundStreaming = true;
+    cfg.maxLayerTiles = 20;
+    cfg.maxCompositeTiles = 16;
+
+    keel::u64 selectedUid = 0;
+    for (keel::i32 step = 0; step < 36; ++step) {
+        const GeoCoord stepCenter{44.58 + (step % 6) * 0.012, 33.46 + (step / 6) * 0.015};
+        const keel::f32 stepZoom = 12.0f + keel::as<keel::f32>((step / 3) % 3) * 0.5f;
+        ui.BeginFrame({1024.0f, 768.0f});
+        if (auto map = guikit::geo::MapView(ui, {
+            .initialCenter = stepCenter,
+            .initialTileZoom = stepZoom,
+            .height = SizeMode::Stretch
+        })) {
+            map.CenterOnGeo(stepCenter, stepZoom);
+            (void)GisRenderEngine::RenderLayers(map, layers, cfg, selectedUid, true);
+        }
+        ui.EndFrame(canvas);
+    }
+
+    // Hold viewport steady and verify all visible tiles finish loading (no eviction livelock)
+    const GeoCoord finalCenter{44.60, 33.50};
+    const keel::f32 finalZoom = 12.5f;
+    GisRenderStats settledStats{};
+    for (keel::i32 settle = 0; settle < 12; ++settle) {
+        CHECK(GisRenderEngine::WaitForBackgroundStreamingIdle(5000));
+        ui.BeginFrame({1024.0f, 768.0f});
+        if (auto map = guikit::geo::MapView(ui, {
+            .initialCenter = finalCenter,
+            .initialTileZoom = finalZoom,
+            .height = SizeMode::Stretch
+        })) {
+            map.CenterOnGeo(finalCenter, finalZoom);
+            settledStats = GisRenderEngine::RenderLayers(map, layers, cfg, selectedUid, true);
+        }
+        ui.EndFrame(canvas);
+        if (settledStats.cachedTilesPending == 0 && settledStats.cachedTilesHit > 0) {
+            break;
+        }
+    }
+    CHECK(settledStats.cachedTilesPending == 0u);
+    CHECK(settledStats.cachedTilesHit > 0u);
+
+    // Regression test: switching to 512px tiles with default 48-tile limits (scaled down to 16 at 512px)
+    // must converge cleanly and stay 100% cache-hit across subsequent frames (zero infinite loading flicker).
+    cfg.tileSizePx = 512;
+    cfg.maxLayerTiles = 48;
+    cfg.maxCompositeTiles = 48;
+    GisRenderStats settled512{};
+    for (keel::i32 settle = 0; settle < 20; ++settle) {
+        CHECK(GisRenderEngine::WaitForBackgroundStreamingIdle(5000));
+        ui.BeginFrame({1024.0f, 768.0f});
+        if (auto map = guikit::geo::MapView(ui, {
+            .initialCenter = finalCenter,
+            .initialTileZoom = finalZoom,
+            .height = SizeMode::Stretch
+        })) {
+            map.CenterOnGeo(finalCenter, finalZoom);
+            settled512 = GisRenderEngine::RenderLayers(map, layers, cfg, selectedUid, true);
+        }
+        ui.EndFrame(canvas);
+        if (settled512.cachedTilesPending == 0u && settled512.cachedTilesHit > 0u) {
+            break;
+        }
+    }
+    CHECK(settled512.cachedTilesPending == 0u);
+    CHECK(settled512.cachedTilesHit > 0u);
+
+    for (keel::i32 steady = 0; steady < 10; ++steady) {
+        ui.BeginFrame({1024.0f, 768.0f});
+        if (auto map = guikit::geo::MapView(ui, {
+            .initialCenter = finalCenter,
+            .initialTileZoom = finalZoom,
+            .height = SizeMode::Stretch
+        })) {
+            map.CenterOnGeo(finalCenter, finalZoom);
+            settled512 = GisRenderEngine::RenderLayers(map, layers, cfg, selectedUid, true);
+        }
+        ui.EndFrame(canvas);
+        CHECK(settled512.cachedTilesPending == 0u);
+        CHECK(settled512.cachedTilesRendered == 0u);
+        CHECK(settled512.cachedTilesHit > 0u);
+    }
+
+    GisRenderEngine::InvalidateTileCache();
+    keel::println("  [PASS] TestGisAsyncTileStreamingStress completed");
+}
+
 int main() {
     keel::println("[RUN] Testing GuiKit Geo module...");
 #if !defined(GUIKIT_HAS_BACKEND_THORVG) || !GUIKIT_HAS_BACKEND_THORVG
@@ -718,6 +851,7 @@ int main() {
     TestGisDemoBayGeoJsonAndRenderEngine();
     TestPanelSashAndBodyOcclusionOverMapViewAndScene();
     TestGisTileCacheAndTileSourceLambda();
+    TestGisAsyncTileStreamingStress();
     if (g_failures == 0) {
         keel::println("[PASS] All GuiKit Geo tests passed successfully!");
         return 0;
