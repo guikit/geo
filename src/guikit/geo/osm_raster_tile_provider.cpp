@@ -2,9 +2,7 @@
 #include "guikit/geo/chart_data_source.hpp"
 #include "guikit/geo/gis_render_engine.hpp"
 
-#include <atomic>
-#include <mutex>
-#include "keel/memory.h"
+#include "keel/atomic.h"
 #include "keel/bits.h"
 #include "keel/core.h"
 #include "keel/format.h"
@@ -12,7 +10,9 @@
 #include "keel/http.h"
 #include "keel/lru_cache.h"
 #include "keel/math.h"
+#include "keel/memory.h"
 #include "keel/smart_ptr.h"
+#include "keel/sync.h"
 #include "keel/time.h"
 
 namespace guikit::geo {
@@ -157,7 +157,7 @@ public:
         const SlippyTileKey& key
     ) const noexcept override {
         const SlippyTileKey normKey = NormalizeKey(key);
-        std::lock_guard<std::mutex> lk(m_mutex);
+        keel::LockGuard<keel::Mutex> lk(m_mutex);
         CacheEntry* entry = m_ramCache.get(normKey);
         if (!entry || !entry->image) {
             return {};
@@ -209,7 +209,7 @@ public:
         keel::Arc<const RasterTileImage> constImg = keel::move(tileImg);
         const keel::i64 nowMs = NowSteadyMs();
         {
-            std::lock_guard<std::mutex> lk(m_mutex);
+            keel::LockGuard<keel::Mutex> lk(m_mutex);
             m_ramCache.put(normKey, CacheEntry{
                 .image = constImg,
                 .createdAtMs = nowMs,
@@ -222,7 +222,7 @@ public:
 
     void ClearCache() noexcept override {
         {
-            std::lock_guard<std::mutex> lk(m_mutex);
+            keel::LockGuard<keel::Mutex> lk(m_mutex);
             m_ramCache.clear();
         }
         keel::memory_trim();
@@ -267,7 +267,7 @@ private:
 
         // Circuit breaker: if network failed in the last 15 seconds, avoid blocking worker threads
         const keel::i64 nowMs = NowSteadyMs();
-        const keel::i64 lastFailMs = m_lastNetworkFailureMs.load(std::memory_order_relaxed);
+        const keel::i64 lastFailMs = m_lastNetworkFailureMs.load(keel::MemoryOrder::Relaxed);
         if (lastFailMs > 0 && (nowMs - lastFailMs) < kOfflineRetryIntervalMs) {
             return keel::Array<keel::u8>{};
         }
@@ -288,7 +288,7 @@ private:
             (void)keel::fs_create_dirs(dirPath.as_ref());
 
             // Atomic write via temporary file + rename so concurrent readers never observe partial PNGs
-            const keel::u64 tmpId = m_accessCounter.fetch_add(1u, std::memory_order_relaxed);
+            const keel::u64 tmpId = m_accessCounter.fetch_add(1u, keel::MemoryOrder::Relaxed);
             const auto tmpPath = keel::format("%s/%d.tmp.%llu.png", dirPath.as_ref(), y, tmpId);
             const keel::StringRef tmpPathRef = tmpPath.as_ref();
             if (!keel::fs_write_file(tmpPathRef, resp.body)) {
@@ -301,7 +301,7 @@ private:
             return keel::move(resp.body);
         }
 
-        m_lastNetworkFailureMs.store(nowMs, std::memory_order_relaxed);
+        m_lastNetworkFailureMs.store(nowMs, keel::MemoryOrder::Relaxed);
         return keel::Array<keel::u8>{};
     }
 
@@ -345,10 +345,10 @@ private:
 
     keel::String m_cacheDir;
     keel::HttpClient m_httpClient;
-    mutable std::mutex m_mutex{};
+    mutable keel::Mutex m_mutex{};
     mutable keel::LruCache<SlippyTileKey, CacheEntry, 32, SlippyTileKeyHash> m_ramCache{};
-    mutable std::atomic<keel::u64> m_accessCounter{1};
-    mutable std::atomic<keel::i64> m_lastNetworkFailureMs{0};
+    mutable keel::Atomic<keel::u64> m_accessCounter{1};
+    mutable keel::Atomic<keel::i64> m_lastNetworkFailureMs{0};
 };
 
 } // namespace

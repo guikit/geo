@@ -1,6 +1,5 @@
 #include "guikit/geo/geo_types.hpp"
 #include "guikit/geo/polygon_triangulator.hpp"
-#include <mutex>
 #include "keel/bits.h"
 #include "keel/core.h"
 #include "keel/format.h"
@@ -8,6 +7,7 @@
 #include "keel/math.h"
 #include "keel/number.h"
 #include "keel/static_array.h"
+#include "keel/sync.h"
 
 namespace guikit::geo {
 
@@ -1541,7 +1541,7 @@ public:
         const SlippyTileKey& key
     ) const noexcept override {
         const SlippyTileKey normKey = NormalizeKey(key);
-        std::lock_guard<std::mutex> lk(m_mutex);
+        keel::LockGuard<keel::Mutex> lk(m_mutex);
         auto* cached = m_cache.get(normKey);
         return cached ? *cached : keel::Arc<const RasterTileImage>{};
     }
@@ -1592,14 +1592,14 @@ public:
 
         keel::Arc<const RasterTileImage> constImg = keel::move(tileImg);
         {
-            std::lock_guard<std::mutex> lk(m_mutex);
+            keel::LockGuard<keel::Mutex> lk(m_mutex);
             m_cache.put(normKey, constImg);
         }
         return constImg;
     }
 
     void ClearCache() noexcept override {
-        std::lock_guard<std::mutex> lk(m_mutex);
+        keel::LockGuard<keel::Mutex> lk(m_mutex);
         m_cache.clear();
     }
 
@@ -1613,7 +1613,7 @@ private:
         return SlippyTileKey{.z = z, .x = x, .y = y, .tileSizePx = sz};
     }
 
-    mutable std::mutex m_mutex{};
+    mutable keel::Mutex m_mutex{};
     mutable keel::LruCache<SlippyTileKey, keel::Arc<const RasterTileImage>, 256, SlippyTileKeyHash> m_cache{};
 };
 

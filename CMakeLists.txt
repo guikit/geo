@@ -42,6 +42,9 @@ set(GUIKIT_GEO_SOURCES
     src/guikit/geo/geo_json_io.cpp
     src/guikit/geo/geo_types.cpp
     src/guikit/geo/gis_render_engine.cpp
+    src/guikit/geo/gis_s52_style.cpp
+    src/guikit/geo/gis_symbols_hittest.cpp
+    src/guikit/geo/gis_tile_cache.cpp
     src/guikit/geo/map_view.cpp
     src/guikit/geo/osm_raster_tile_provider.cpp
     src/guikit/geo/polygon_triangulator.cpp
