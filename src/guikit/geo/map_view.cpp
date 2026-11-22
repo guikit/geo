@@ -578,6 +578,8 @@ MapViewScope MapView::Open(
         .selectableItems = safeOpts.selectableItems,
         .showScrollbars = safeOpts.showScrollbars,
         .showControls = safeOpts.showControls,
+        .inspectorPlacement = SceneInspectorPlacement::TopLeft,
+        .inspectorOffset = safeOpts.showBorderRulers ? Vec2{80.0f, 20.0f} : Vec2{4.0f, 0.0f},
         .clampToWorld = safeOpts.clampToWorld,
         .background = safeOpts.background,
         .border = safeOpts.border,
