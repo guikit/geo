@@ -24,7 +24,7 @@ void RegisterEmbeddedAssets() noexcept;
     MapViewOptions opts = {},
     keel::SourceLocation loc = keel::SourceLocation::current()
 ) {
-    return ui.Open<guikit::MapView>(opts, loc);
+    return guikit::MapView::Open(ui, opts, loc);
 }
 
 } // namespace guikit::geo

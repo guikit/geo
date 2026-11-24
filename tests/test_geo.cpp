@@ -175,9 +175,9 @@ void TestMapViewWidgetWorkflow() {
     MapViewState tabSwitchView{};
     auto renderTabbedApp = [&]() {
         ui.BeginFrame({keel::as<keel::f32>(width), keel::as<keel::f32>(height)});
-        if (auto stage = ui.Box({.width = SizeMode::Stretch, .height = SizeMode::Stretch})) {
+        if (auto stage = guikit::Box(ui, {.width = SizeMode::Stretch, .height = SizeMode::Stretch})) {
             if (!showMapTab) {
-                ui.Text("Other Tab Content");
+                guikit::Text(ui, "Other Tab Content");
             } else {
                 if (auto map = guikit::geo::MapView(ui, {
                     .crs = MapCrs::EPSG3857_WebMercator,
@@ -335,17 +335,17 @@ void TestPanelSashAndBodyOcclusionOverMapViewAndScene() {
         childBtnClicked = false;
 
         ui.BeginFrame({800.0f, 600.0f});
-        if (auto root = ui.Row({ .gap = 0.0f, .padding = Padding::All(0.0f), .height = SizeMode::Stretch })) {
-            if (auto leftSb = ui.Sidebar({
+        if (auto root = guikit::Row(ui, { .gap = 0.0f, .padding = Padding::All(0.0f), .height = SizeMode::Stretch })) {
+            if (auto leftSb = guikit::Sidebar(ui, {
                 .side = SidebarSide::Left,
                 .width = 180.0f,
                 .resizable = true,
                 .padding = Padding::All(8.0f)
             })) {
-                ui.Heading({ .label = "Acoustic Source" });
+                guikit::Heading(ui, { .label = "Acoustic Source" });
             }
 
-            if (auto centerCol = ui.Column({
+            if (auto centerCol = guikit::Column(ui, {
                 .gap = 0.0f,
                 .padding = Padding::All(0.0f),
                 .width = SizeMode::Stretch,
@@ -375,14 +375,14 @@ void TestPanelSashAndBodyOcclusionOverMapViewAndScene() {
                     );
 
                     // Floating HUD card inside MapView
-                    if (auto hudCard = ui.Card({ .padding = Padding::All(8.0f) })) {
-                        auto btn = ui.Button({ .text = "Drop Buoy" });
+                    if (auto hudCard = guikit::Card(ui, { .padding = Padding::All(8.0f) })) {
+                        auto btn = guikit::Button(ui, { .text = "Drop Buoy" });
                         childBtnRect = btn.rect;
                         childBtnClicked = btn.clicked;
                     }
                 }
 
-                if (auto bp = ui.BottomPanel(showBottom, {
+                if (auto bp = guikit::BottomPanel(ui, showBottom, {
                     .height = 160.0f,
                     .minHeight = 90.0f,
                     .maxHeight = 360.0f,
@@ -392,11 +392,11 @@ void TestPanelSashAndBodyOcclusionOverMapViewAndScene() {
                     .padding = Padding::All(8.0f)
                 })) {
                     bottomRect = bp.response.rect;
-                    ui.Button({ .text = "Bellhop Profile Action" });
+                    guikit::Button(ui, { .text = "Bellhop Profile Action" });
                 }
             }
 
-            if (auto rightSb = ui.Sidebar(rightMode, {
+            if (auto rightSb = guikit::Sidebar(ui, rightMode, {
                 .side = SidebarSide::Right,
                 .width = 180.0f,
                 .minWidth = 120.0f,
@@ -405,7 +405,7 @@ void TestPanelSashAndBodyOcclusionOverMapViewAndScene() {
                 .padding = Padding::All(8.0f)
             })) {
                 rightSidebarRect = rightSb.response.rect;
-                ui.Heading({ .label = "Inspector" });
+                guikit::Heading(ui, { .label = "Inspector" });
             }
         }
         ui.EndFrame(canvas);
@@ -616,7 +616,7 @@ void TestGisTileCacheAndTileSourceLambda() {
         // automatically triggers GisRenderEngine::TrimInactiveCaches(), then re-entering MapView re-renders cleanly
         for (keel::i32 f = 0; f < 180; ++f) {
             ui.BeginFrame({640.0f, 480.0f});
-            ui.Text("Switched away from GIS map");
+            guikit::Text(ui, "Switched away from GIS map");
             ui.EndFrame(canvas);
         }
         canvas.TrimCaches();
@@ -647,7 +647,7 @@ void TestGisTileCacheAndTileSourceLambda() {
         keel::i32 overlayLayerCalls = 0;
         for (keel::i32 f = 0; f < 2; ++f) {
             ui.BeginFrame({800.0f, 600.0f});
-            if (auto col = ui.Column({.gap = 8.0f, .padding = Padding::All(8.0f)})) {
+            if (auto col = guikit::Column(ui, {.gap = 8.0f, .padding = Padding::All(8.0f)})) {
                 if (auto map = guikit::geo::MapView(ui, {
                     .tileSource = [&](OsmTileId /*tile*/, keel::i32 layerIndex) -> keel::StringRef {
                         if (layerIndex == 0) ++baseLayerCalls;

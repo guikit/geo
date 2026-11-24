@@ -589,7 +589,7 @@ MapViewScope MapView::Open(
         .disabled = safeOpts.disabled
     };
 
-    SceneScope scene = Scene::OpenWithId(ctx, id, sceneOpts);
+    SceneScope scene = guikit::OpenSceneWithId(ctx, id, sceneOpts);
     const UiTheme& activeTheme = ctx.GetTheme();
     const bool lightMode = (activeTheme.mode == ThemeMode::Light);
 
