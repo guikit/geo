@@ -121,7 +121,7 @@ public:
     static keel::usize EnforceFeatureRamBudget(
         keel::ArrayRef<GeoLayer> layers,
         keel::usize maxResidentBytes,
-        keel::u64 protectedTick = ~keel::u64{0},
+        keel::u64 protectedTick = keel::Limits<keel::u64>::kMax,
         keel::usize* outResidentFeatures = nullptr,
         keel::usize* outResidentBytes = nullptr
     );

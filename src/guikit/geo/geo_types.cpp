@@ -1021,7 +1021,7 @@ keel::usize GeoLayer::EvictAllPagedPayloads() const noexcept {
         freed += feat.UnloadPropertiesPayload();
     }
     if (pager) {
-        freed += pager->EvictChunksToBudget(0, ~keel::u64{0});
+        freed += pager->EvictChunksToBudget(0, keel::Limits<keel::u64>::kMax);
         pager->CloseIdleConnection();
     }
     return freed;

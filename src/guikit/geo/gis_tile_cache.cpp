@@ -1028,7 +1028,7 @@ bool PerLayerTileCacheManager::StoreBasemapTile(
     while (m_basemapTiles.size() >= maxBasemapTiles && !m_basemapTiles.contains(key) && !m_basemapTiles.empty()) {
         bool found = false;
         TileCoordKey victimKey{};
-        keel::u64 oldestFrame = ~keel::u64{0};
+        keel::u64 oldestFrame = keel::Limits<keel::u64>::kMax;
         for (auto [k, v] : m_basemapTiles) {
             if (v.lastUsedFrame < frameTick && v.lastUsedFrame < oldestFrame) {
                 oldestFrame = v.lastUsedFrame;
@@ -1548,7 +1548,7 @@ void PerLayerTileCacheManager::EnforceGlobalLayerPixelBudget(
     while (m_pixelLayerTileCount > targetCount) {
         LayerTileStore* victimStore = nullptr;
         TileCoordKey victimKey{};
-        keel::u64 oldestFrame = ~keel::u64{0};
+        keel::u64 oldestFrame = keel::Limits<keel::u64>::kMax;
         for (auto [uid, store] : m_layerStores) {
             for (auto [k, v] : store.tiles) {
                 if (v.pixels.capacity() == 0u) {
@@ -1584,7 +1584,7 @@ void PerLayerTileCacheManager::EnforceGlobalLayerPixelBudget(
     while (m_pixelLayerTileCount > targetCount) {
         LayerTileStore* victimStore = nullptr;
         TileCoordKey victimKey{};
-        keel::u64 oldestFrame = ~keel::u64{0};
+        keel::u64 oldestFrame = keel::Limits<keel::u64>::kMax;
         for (auto [uid, store] : m_layerStores) {
             for (auto [k, v] : store.tiles) {
                 if (v.pixels.capacity() > 0u &&
@@ -1675,7 +1675,7 @@ void PerLayerTileCacheManager::EvictOldestLayerTiles(LayerTileStore& store, keel
     while (store.tiles.size() > targetCount && !store.tiles.empty()) {
         bool found = false;
         TileCoordKey oldestKey{};
-        keel::u64 oldestFrame = ~keel::u64{0};
+        keel::u64 oldestFrame = keel::Limits<keel::u64>::kMax;
         for (auto [k, v] : store.tiles) {
             if (v.lastUsedFrame < protectedFrameTick && v.lastUsedFrame < oldestFrame) {
                 oldestFrame = v.lastUsedFrame;
@@ -1700,7 +1700,7 @@ void PerLayerTileCacheManager::EvictOldestCompositeTiles(
     while (m_compositeTiles.size() > targetCount && !m_compositeTiles.empty()) {
         bool found = false;
         TileCoordKey oldestKey{};
-        keel::u64 oldestFrame = ~keel::u64{0};
+        keel::u64 oldestFrame = keel::Limits<keel::u64>::kMax;
         for (auto [k, v] : m_compositeTiles) {
             if (v.lastUsedFrame < protectedFrameTick && v.lastUsedFrame < oldestFrame) {
                 oldestFrame = v.lastUsedFrame;

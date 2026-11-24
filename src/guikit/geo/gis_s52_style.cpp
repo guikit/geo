@@ -1053,8 +1053,7 @@ void RasterizeCandidatesToPixels(
         // 2. Polygon Outline & LineStrings (Style-Bucket Compound Path Batching)
         if (st.renderStroke && st.strokeColor.a > 0 && st.strokeWidthPx > 0.0f) {
             const keel::u32 strokeRgba = st.strokeColor.ToUint32();
-            keel::u32 strokeWidthBits = 0;
-            std::memcpy(&strokeWidthBits, &st.strokeWidthPx, sizeof(keel::f32));
+            const keel::u32 strokeWidthBits = keel::bit_cast<keel::u32>(st.strokeWidthPx);
             const bool isDashed = (cand.chartClass == geo::ChartFeatureClass::NavigationLine ||
                                    cand.chartClass == geo::ChartFeatureClass::FairwayArea ||
                                    cand.chartClass == geo::ChartFeatureClass::CoverageMask);
