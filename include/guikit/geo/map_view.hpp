@@ -1,7 +1,7 @@
 #pragma once
 
 #include "guikit/geo/map_grid.hpp"
-#include "guikit/panels/scene.hpp"
+#include "guikit/views/scene.hpp"
 #include "keel/core.h"
 #include "keel/optional.h"
 #include "keel/ref.h"
